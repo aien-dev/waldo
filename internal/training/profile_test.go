@@ -458,6 +458,31 @@ func TestWeightedRecordSourceHonorsTokenRatios(t *testing.T) {
 	}
 }
 
+func TestWeightedRecordSourcePreservesRatiosAfterCorpusExhaustion(t *testing.T) {
+	first := writeTrainingShard(t, []string{"a1", "a2", "a3", "a4", "a5", "a6"})
+	first.Corpus = "corpus-a"
+	second := writeTrainingShard(t, []string{"b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "ba", "bb", "bc"})
+	second.Corpus = "corpus-b"
+	parameters, err := ResolveParameters(Parameters{Profile: WeightedProfile, Steps: 1, Epochs: 2, BatchSize: 1, SequenceLength: 8, LearningRate: 0.001, Seed: 42, CorpusWeights: map[string]uint64{"corpus-a": 3, "corpus-b": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := NewCanonicalRecordSource([]Input{first, second}, parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int{}
+	if err := source.Stream(context.Background(), func(value Record) error {
+		counts[value.Corpus]++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if counts["corpus-a"] != 12 || counts["corpus-b"] != 4 {
+		t.Fatalf("weighted multi-pass corpus counts = %v, want corpus-a:12 corpus-b:4", counts)
+	}
+}
+
 func TestBalancedEvaluationIncludesEveryCorpus(t *testing.T) {
 	first := writeTrainingShard(t, []string{"a1", "a2", "a3", "a4"})
 	first.Corpus = "corpus-a"

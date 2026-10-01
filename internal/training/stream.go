@@ -1181,6 +1181,13 @@ func (source *canonicalRecordSource) streamBalancedEpoch(ctx context.Context, ep
 		emitted[selected] += int64(source.codec.Count(record.Text)) + 1
 		item, ok := <-streams[selected]
 		if !ok {
+			// A weighted epoch ends when its first corpus is exhausted. Draining
+			// the remaining corpora would silently change the declared token
+			// ratios for the rest of the epoch. The capacity preflight increases
+			// the epoch count when another weighted pass is needed.
+			if len(source.weights) != 0 {
+				return nil
+			}
 			active[selected] = false
 			activeCount--
 			continue
