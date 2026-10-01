@@ -19,10 +19,11 @@ import (
 
 var foundationFiles = []string{
 	"0000-foundation-canary.yaml",
-	"0001-foundation-small-pilot.yaml",
-	"0002-foundation-small.yaml",
-	"0003-foundation-medium-pilot.yaml",
-	"0004-foundation-medium.yaml",
+	"0001-foundation-mixture-canary.yaml",
+	"0002-foundation-small-pilot.yaml",
+	"0003-foundation-small.yaml",
+	"0004-foundation-medium-pilot.yaml",
+	"0005-foundation-medium.yaml",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -96,6 +97,7 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		tokens     int64
 	}{
 		{16014336, 5013504},
+		{16014336, 50003968},
 		{76416000, 760020992},
 		{76416000, 1500053504},
 		{336637440, 3400007680},
@@ -115,8 +117,8 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 	qualificationCorpora := []string{
 		"core/common-pile/wikimedia",
-		"science/plos",
 		"core/common-pile/pressbooks",
+		"science/plos",
 	}
 	qualificationWeights := []uint64{5, 2, 1}
 	for _, file := range foundationFiles {
@@ -153,7 +155,7 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		if parameters.Profile != "causal-pretrain-weighted" || parameters.Parallelism != training.ParallelismAuto || parameters.ComputePrecision != "bfloat16" || parameters.Compile || parameters.Optimizer != "adamw" || parameters.Schedule != "warmup-stable-warmdown" || parameters.DistributionPolicy != "" || parameters.Seed != 42 {
 			t.Fatalf("%s execution controls = %+v", file, parameters)
 		}
-		if file != foundationFiles[0] {
+		if file != foundationFiles[0] && file != foundationFiles[1] {
 			forecast, err := architecture.Forecast()
 			if err != nil {
 				t.Fatal(err)
@@ -167,10 +169,10 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 }
 
 func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
-	smallPilot := loadCompose(t, foundationFiles[3])
-	small := loadCompose(t, foundationFiles[4])
-	firstPilot := loadCompose(t, foundationFiles[1])
-	first := loadCompose(t, foundationFiles[2])
+	smallPilot := loadCompose(t, foundationFiles[4])
+	small := loadCompose(t, foundationFiles[5])
+	firstPilot := loadCompose(t, foundationFiles[2])
+	first := loadCompose(t, foundationFiles[3])
 	if firstPilot.Architecture != first.Architecture {
 		t.Fatal("small pilot and qualification architectures differ")
 	}

@@ -1,4 +1,4 @@
-# Gate 3: test a 337M architecture near 10 training tokens per parameter.
+# Gate 4: test a 337M architecture near 10 training tokens per parameter.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
@@ -31,9 +31,9 @@ stages:
     corpora:
       - path: core/common-pile/wikimedia
         weight: 5
-      - path: science/plos
-        weight: 2
       - path: core/common-pile/pressbooks
+        weight: 2
+      - path: science/plos
         weight: 1
     parameters:
       profile: causal-pretrain-weighted

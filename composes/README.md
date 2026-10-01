@@ -18,10 +18,13 @@ The new ladder isolates foundation learning. Gate 0 uses one small, assessed
 PressBooks shard so the systems canary stays cheap. The failed 16M capability
 experiment is preserved in
 [`archive/2026-10-tiny-r50k-failure`](archive/2026-10-tiny-r50k-failure/README.md).
-Gates 1-4 use one fixed mixture across 76M and 337M architectures. Each size
-gets a 10-token-per-parameter pilot before a run near 20. Parameters remain
-float32 and execution remains eager. No conversation or instruction data enters
-this ladder.
+The failed 76M mixture experiment is preserved in
+[`archive/2026-10-small-mixture-failure`](archive/2026-10-small-mixture-failure/README.md).
+Gate 1 validates the corrected data mixture cheaply. Gates 2-5 use that fixed
+mixture across 76M and 337M architectures. Each size gets a
+10-token-per-parameter pilot before a run near 20. Parameters remain float32
+and execution remains eager. No conversation or instruction data enters this
+ladder.
 
 The qualification mixture contains only assessed schema-2 Wikimedia, PLOS,
 and PressBooks shards. DOAB and Gutenberg remain excluded until they are
@@ -43,7 +46,7 @@ boilerplate filters are silently unavailable for those records.
    failed rung; do not advance.
 7. For every capability rung, tied token embeddings must consume no more than
    50% of total parameters. Report the allocation explicitly.
-8. Do not add conversational tuning until `0004-foundation-medium.yaml`
+8. Do not add conversational tuning until `0005-foundation-medium.yaml`
    qualifies.
 
 For seed repeats, copy the qualifying compose into the saved run evidence and
@@ -54,16 +57,19 @@ change only `seed`; do not silently edit the numbered reference compose.
 | Rung | Suggested model name | Size | Tokens | Tokens/parameter | Question answered |
 | --- | --- | ---: | ---: | ---: | --- |
 | `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | 0.31 | Does the complete pipeline work using one assessed shard? |
-| `0001-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 760M | 9.95 | Does the first balanced architecture learn recognizable language? |
-| `0002-foundation-small.yaml` | `foundation-small-01` | 76M | 1.5B | 19.63 | Does the small model reach honest babbling competence? |
-| `0003-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 3.4B | 10.10 | Does the medium model begin producing locally coherent text? |
-| `0004-foundation-medium.yaml` | `foundation-medium-01` | 337M | 6.7B | 19.90 | Is the foundation coherent enough to consider later tuning? |
+| `0001-foundation-mixture-canary.yaml` | `foundation-mixture-canary-01` | 16M | 50M | 3.12 | Does the corrected weighted stream report the declared 5:2:1 exposure? |
+| `0002-foundation-small-pilot.yaml` | `foundation-small-pilot-02` | 76M | 760M | 9.95 | Does the first balanced architecture learn recognizable language? |
+| `0003-foundation-small.yaml` | `foundation-small-02` | 76M | 1.5B | 19.63 | Does the small model reach honest babbling competence? |
+| `0004-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 3.4B | 10.10 | Does the medium model begin producing locally coherent text? |
+| `0005-foundation-medium.yaml` | `foundation-medium-01` | 337M | 6.7B | 19.90 | Is the foundation coherent enough to consider later tuning? |
 
 The small pair allocates 32.2M of 76.4M parameters (42.1%) to embeddings. The
 medium pair allocates 57.9M of 336.6M (17.2%). Pilot and qualification within
-each pair keep architecture and corpus recipe fixed. The canary corpus is
-intentionally smaller and is not capability evidence. Gate 1 has a one-time
-materialization cost of roughly 23.6 GiB; later rungs reuse that cache.
+each pair keep architecture and corpus recipe fixed. Gates 0 and 1 are systems
+and data-policy checks, not capability evidence. Gate 1 has a one-time
+materialization cost of roughly 23.6 GiB; later rungs reuse that cache. The
+active mixture is 62.5% Wikimedia, 25% PressBooks, and 12.5% PLOS by token
+target.
 
 ## Run procedure
 
@@ -96,6 +102,10 @@ waldo model chat foundation-canary-02 \
 Track held-out loss at every recorded checkpoint. Run all 15 prompts against
 the selected checkpoint artifact and record its run ID. A separately published
 artifact must produce materially equivalent loss and generations.
+
+For capability rungs, also run prompts 1, 3, 11, and 14 at temperature 0.7.
+These sampled probes do not replace deterministic scoring; they distinguish a
+narrow greedy path from collapse across the learned distribution.
 
 ## Fixed evaluation prompts
 
@@ -150,16 +160,26 @@ generation was non-empty but collapsed into repeated phrases and bullets. At
 only 0.31 tokens per parameter, this is a systems pass and a capability fail by
 design; it must not be used to judge the corpus recipe.
 
-### Gate 1: small pilot
+### Gate 1: mixture canary
 
 - Gate 0 still passes.
+- Observed token exposure is within 0.1 percentage points of 62.5% Wikimedia,
+  25.0% PressBooks, and 12.5% PLOS.
+- Every eligible corpus contributes positive token targets.
+- No capability or factual-quality threshold applies to this 16M model.
+
+### Gate 2: small pilot
+
+- Gate 1 passes.
 - At least **8/15** responses avoid severe repetition failure.
 - At least **10/15** responses contain recognizable English word sequences
   related to the prompt.
+- At least **3/4** temperature-0.7 probes remain relevant and avoid severe
+  repetition.
 - No factual accuracy threshold applies. This rung is expected to babble.
 - Held-out loss is still improving at the selected checkpoint.
 
-### Gate 2: small qualification
+### Gate 3: small qualification
 
 - Fixed-prompt score is at least **10/30**.
 - At least **10/15** responses avoid repetition failure.
@@ -167,14 +187,14 @@ design; it must not be used to judge the corpus recipe.
 - The selected checkpoint improves materially over the small pilot without
   crossing a visible loss or generation peak.
 
-### Gate 3: medium pilot
+### Gate 4: medium pilot
 
 - Fixed-prompt score is at least **15/30**.
 - At least **12/15** responses avoid repetition failure.
 - At least 7 of the 10 factual prompts are relevant, even if not fully correct.
 - Loss and prompt quality both improve relative to the small qualification.
 
-### Gate 4: medium qualification
+### Gate 5: medium qualification
 
 - Fixed-prompt score is at least **18/30**.
 - At least **13/15** responses avoid repetition failure.
