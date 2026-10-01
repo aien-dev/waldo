@@ -118,7 +118,7 @@ func runModelComposeForecast(context Context, path string, stdout, progress io.W
 		}{Compose: composePath, Forecast: visible, Host: hostForecast})
 	}
 	fmt.Fprintf(stdout, "COMPOSE:     %s\n", composePath)
-	writeModelForecast(stdout, report, hostForecast, compareHosts)
+	writeModelForecast(stdout, report, hostForecast, compareHosts, &compose.Architecture)
 	return nil
 }
 
@@ -178,12 +178,23 @@ func runModelIndexForecast(context Context, paths []string, stdout, warnings io.
 	}
 	fmt.Fprintf(stdout, "MODEL:       %s\n", preset.Name)
 	fmt.Fprintln(stdout, "BUDGET:      one pass")
-	writeModelForecast(stdout, report, hostForecast, compareHosts)
+	writeModelForecast(stdout, report, hostForecast, compareHosts, &preset.Architecture)
 	return nil
 }
 
-func writeModelForecast(stdout io.Writer, report model.ResourceForecast, hostForecast model.HostForecast, compareHosts bool) {
+func writeModelForecast(stdout io.Writer, report model.ResourceForecast, hostForecast model.HostForecast, compareHosts bool, architecture *model.Architecture) {
 	fmt.Fprintf(stdout, "PARAMETERS:  %s\n", humanModelParameters(report.ApproximateParameters))
+	if architecture != nil && report.ApproximateParameters > 0 {
+		tokenParameters := architecture.VocabularySize * architecture.HiddenSize
+		if !architecture.TieEmbeddings {
+			tokenParameters *= 2
+		}
+		share := 100 * float64(tokenParameters) / float64(report.ApproximateParameters)
+		fmt.Fprintf(stdout, "TOKEN I/O:   %s (%.1f%% of parameters)\n", humanModelParameters(tokenParameters), share)
+		if share > 50 {
+			fmt.Fprintln(stdout, "WARNING:     token input/output weights exceed 50% of model capacity")
+		}
+	}
 	if len(report.EpochDerivedStages) == 0 {
 		fmt.Fprintf(stdout, "TOKENS:      %s\n", humanCount(report.PlannedTokens))
 	} else if report.PlannedTokens > 0 {
