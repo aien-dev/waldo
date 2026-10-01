@@ -31,11 +31,9 @@ stages:
     corpora:
       - path: core/common-pile/wikimedia
         weight: 5
-      - path: core/books/doab
-        weight: 2
       - path: science/plos
         weight: 2
-      - path: core/books/gutenberg
+      - path: core/common-pile/pressbooks
         weight: 1
     parameters:
       profile: causal-pretrain-weighted

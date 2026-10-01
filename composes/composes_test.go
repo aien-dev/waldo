@@ -115,11 +115,10 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 	qualificationCorpora := []string{
 		"core/common-pile/wikimedia",
-		"core/books/doab",
 		"science/plos",
-		"core/books/gutenberg",
+		"core/common-pile/pressbooks",
 	}
-	qualificationWeights := []uint64{5, 2, 2, 1}
+	qualificationWeights := []uint64{5, 2, 1}
 	for _, file := range foundationFiles {
 		compose := loadCompose(t, file)
 		if compose.Base != nil || compose.Interaction.Template != "" || len(compose.Stages) != 1 {

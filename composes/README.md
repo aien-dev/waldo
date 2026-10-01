@@ -21,6 +21,11 @@ Each size gets a short pilot before a run near 20 training tokens per parameter.
 Parameters remain float32 and execution remains eager. No conversation or
 instruction data enters this ladder.
 
+The qualification mixture contains only assessed schema-2 Wikimedia, PLOS,
+and PressBooks shards. DOAB and Gutenberg remain excluded until they are
+re-ingested with content assessments; otherwise the declared repetition and
+boilerplate filters are silently unavailable for those records.
+
 ## Rules
 
 1. Use a fresh model name for every run. Never append a changed recipe to an
@@ -54,7 +59,8 @@ change only `seed`; do not silently edit the numbered reference compose.
 The tiny pilot and qualification use the same architecture and recipe. The
 small pair does likewise. Only the token budget, batch, and observation cadence
 change between sizes. The canary corpus is intentionally smaller and is not
-evidence for the quality of the four-corpus recipe.
+evidence for the quality of the three-corpus recipe. The first Gate 1 run has a
+one-time materialization cost of roughly 23.6 GiB; later rungs reuse that cache.
 
 ## Run procedure
 
