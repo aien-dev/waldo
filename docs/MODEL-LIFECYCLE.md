@@ -264,6 +264,7 @@ waldo model chat small
 waldo model chat small "Once upon a time"
 printf 'Once upon a time' | waldo model chat small
 waldo --json model chat small "Once" --max-tokens 64 --temperature 0 --seed 7
+waldo model chat conversation --run-id <completed-run-id> --raw --temperature 0 "Linux is"
 ```
 
 No generation option is required. Defaults are 256 maximum tokens,
@@ -275,6 +276,12 @@ invalid UTF-8 bytes are escaped so model output cannot emit terminal control
 sequences. Redirected output is rendered once without cursor controls. JSON is
 one-shot and includes model and run identity, prompt, text, token count, finish
 reason, and generation duration.
+
+`--run-id` selects the verified published artifact from a specific completed
+real run instead of the model's current run. This supports stage-by-stage
+regression diagnosis without changing model state. `--raw` bypasses the model
+interaction template and performs causal continuation, which is useful when
+testing a pretraining artifact before conversation tuning.
 
 The built-in byte-tokenizer models are causal pretraining models and carry no
 chat template. Interactive mode therefore performs raw continuation;

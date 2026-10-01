@@ -1741,7 +1741,7 @@ var modelChatInput io.Reader = os.Stdin
 var modelChatTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 
 func runModelChat(context Context, args []string, stdout, stderr io.Writer) error {
-	name, prompt, options, err := cobraModelChatOptions(context, args)
+	name, prompt, options, runID, raw, err := cobraModelChatOptions(context, args)
 	if err != nil {
 		return err
 	}
@@ -1755,6 +1755,14 @@ func runModelChat(context Context, args []string, stdout, stderr io.Writer) erro
 	}
 	if len(inspection.Model.Runs) == 0 && inspection.Origin == nil {
 		return fmt.Errorf("model %q is untrained", name)
+	}
+	inspection, err = selectModelChatRun(inspection, runID)
+	if err != nil {
+		return err
+	}
+	interaction := inspection.Model.Interaction
+	if raw {
+		interaction = model.Interaction{}
 	}
 	interactive := prompt == nil && modelChatTerminal()
 	if context.JSON && interactive {
@@ -1778,26 +1786,45 @@ func runModelChat(context Context, args []string, stdout, stderr io.Writer) erro
 	}
 	var chatErr error
 	if interactive {
-		chatErr = runInteractiveChat(context.Execution, opened, inspection.Model.Interaction, options, stdout)
+		chatErr = runInteractiveChat(context.Execution, opened, interaction, options, stdout)
 	} else {
-		chatErr = runOneShotChat(context, opened, inspection.Model.Interaction, *prompt, options, stdout)
+		chatErr = runOneShotChat(context, opened, interaction, *prompt, options, stdout)
 	}
 	return errors.Join(chatErr, opened.Session.Close())
 }
 
-func cobraModelChatOptions(context Context, args []string) (string, *string, inference.Options, error) {
+func cobraModelChatOptions(context Context, args []string) (string, *string, inference.Options, string, bool, error) {
 	options := inference.Options{MaxTokens: intOption(context, "max-tokens"), Temperature: float64Option(context, "temperature"), TopP: float64Option(context, "top-p")}
 	if optionChanged(context, "seed") {
 		seed := uint64Option(context, "seed")
 		options.Seed = &seed
 	}
 	if err := options.Validate(); err != nil {
-		return "", nil, options, err
+		return "", nil, options, "", false, err
 	}
+	runID := strings.TrimSpace(stringOption(context, "run-id"))
+	raw := boolOption(context, "raw")
 	if len(args) == 2 {
-		return args[0], &args[1], options, nil
+		return args[0], &args[1], options, runID, raw, nil
 	}
-	return args[0], nil, options, nil
+	return args[0], nil, options, runID, raw, nil
+}
+
+func selectModelChatRun(inspection model.Inspection, runID string) (model.Inspection, error) {
+	if runID == "" {
+		return inspection, nil
+	}
+	for _, run := range inspection.BOM.Runs {
+		if run.ID != runID {
+			continue
+		}
+		if run.State != model.RunComplete || run.Simulated {
+			return model.Inspection{}, fmt.Errorf("model %q run %q is not a complete real run", inspection.Model.Name, runID)
+		}
+		inspection.BOM.CurrentRunID = runID
+		return inspection, nil
+	}
+	return model.Inspection{}, fmt.Errorf("model %q has no run %q", inspection.Model.Name, runID)
 }
 
 func runOneShotChat(context Context, opened inference.Opened, interaction model.Interaction, prompt string, options inference.Options, stdout io.Writer) error {

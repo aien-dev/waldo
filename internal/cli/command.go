@@ -243,7 +243,9 @@ func newModelCommand(state *cobraState) *cobra.Command {
 			integerFlag("max-tokens", 256, "maximum generated tokens"),
 			decimalFlag("temperature", 0.8, "sampling temperature"),
 			decimalFlag("top-p", 0.95, "nucleus sampling probability"),
-			unsigned64Flag("seed", 0, "deterministic sampling seed")),
+			unsigned64Flag("seed", 0, "deterministic sampling seed"),
+			textFlag("run-id", "", "completed run artifact to use instead of the current run"),
+			booleanFlag("raw", "bypass the model interaction template and perform raw causal continuation")),
 		leaf(state, "rm <name...>", "Remove explicitly named local models", "Names are preflighted before removal.", cobra.MinimumNArgs(1), runModelRemove),
 	)
 	return command
