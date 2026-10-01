@@ -51,9 +51,9 @@ change only `seed`; do not silently edit the numbered reference compose.
 | Rung | Suggested model name | Size | Tokens | Tokens/parameter | Question answered |
 | --- | --- | ---: | ---: | ---: | --- |
 | `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | 0.31 | Does the complete pipeline work using one assessed shard? |
-| `0001-foundation-tiny-pilot.yaml` | `foundation-tiny-pilot-01` | 16M | 50M | 3.12 | Does the full recipe begin improving deterministic generation? |
+| `0001-foundation-tiny-pilot.yaml` | `foundation-tiny-pilot-02` | 16M | 160M | 9.99 | Does the full recipe produce coherent deterministic generation? |
 | `0002-foundation-tiny.yaml` | `foundation-tiny-01` | 16M | 320M | 19.98 | Can a properly exposed tiny model learn coherent language? |
-| `0003-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 300M | 3.93 | Does the 76M architecture follow the proven learning curve? |
+| `0003-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 760M | 9.95 | Does the 76M architecture follow the proven learning curve? |
 | `0004-foundation-small.yaml` | `foundation-small-01` | 76M | 1.5B | 19.63 | Does the small foundation justify designing a medium ladder? |
 
 The tiny pilot and qualification use the same architecture and recipe. The
@@ -141,10 +141,18 @@ design; it must not be used to judge the corpus recipe.
 ### Gate 1: tiny pilot
 
 - Gate 0 still passes.
-- Fixed-prompt score is at least **8/30**.
-- At least **8/15** responses avoid repetition failure.
+- Fixed-prompt score is at least **12/30**.
+- At least **11/15** responses avoid repetition failure.
 - The later checkpoints improve both held-out loss and prompt score over the
   early checkpoint. If loss improves while prompt score degrades, stop.
+
+The original 50M-token `foundation-tiny-pilot-01` run
+`246cdae7ed71a425` failed this gate. Four-GPU accounting and 5:2:1 corpus
+exposure were correct, and held-out loss improved from 10.8795 to a final-best
+4.9693, but deterministic answers were off-topic and severely repetitive.
+At 3.12 tokens per parameter, this was an underexposed learning-curve point,
+not evidence for scaling. The replacement pilot requests 160M tokens and must
+use the fresh `foundation-tiny-pilot-02` model name.
 
 ### Gate 2: tiny qualification
 
@@ -158,10 +166,11 @@ design; it must not be used to judge the corpus recipe.
 
 ### Gate 3: small pilot
 
-- Fixed-prompt score is at least **12/30**.
-- At least **11/15** responses avoid repetition failure.
+- Fixed-prompt score is at least **16/30**.
+- At least **13/15** responses avoid repetition failure.
 - Loss and prompt score improve together across checkpoints.
-- This underexposed pilot is not required to beat the qualified tiny model.
+- The pilot must match or beat the qualified tiny model before receiving the
+  full small-model budget.
 
 ### Gate 4: small qualification
 

@@ -96,9 +96,9 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		tokens     int64
 	}{
 		{16014336, 5013504},
-		{16014336, 50003968},
+		{16014336, 160006144},
 		{16014336, 320012288},
-		{76416000, 300023808},
+		{76416000, 760020992},
 		{76416000, 1500053504},
 	}
 	for index, file := range foundationFiles {

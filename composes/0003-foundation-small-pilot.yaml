@@ -1,4 +1,4 @@
-# Gate 3: verify the 76M architecture before its qualification budget.
+# Gate 3: verify the 76M architecture near 10 training tokens per parameter.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
@@ -38,7 +38,7 @@ stages:
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      tokens: 300000000
+      tokens: 760000000
       batch_size: 64
       gradient_accumulation_steps: 4
       compute_precision: bfloat16
@@ -50,11 +50,11 @@ stages:
       schedule: warmup-stable-warmdown
       seed: 42
       weight_decay: 0.1
-      warmup_steps: 229
-      warmdown_steps: 916
+      warmup_steps: 580
+      warmdown_steps: 2319
       shuffle_buffer_records: 32768
       shuffle_buffer_bytes: 1073741824
-      checkpoint_every: 250
-      evaluate_every: 250
+      checkpoint_every: 500
+      evaluate_every: 500
       evaluation_max_records: 512
       evaluation_max_bytes: 16777216

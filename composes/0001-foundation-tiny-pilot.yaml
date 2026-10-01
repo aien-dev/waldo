@@ -1,4 +1,4 @@
-# Gate 1: verify that the 16M architecture begins learning usable language.
+# Gate 1: verify the 16M architecture near 10 training tokens per parameter.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
@@ -38,7 +38,7 @@ stages:
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      tokens: 50000000
+      tokens: 160000000
       batch_size: 32
       gradient_accumulation_steps: 2
       compute_precision: bfloat16
@@ -50,11 +50,11 @@ stages:
       schedule: warmup-stable-warmdown
       seed: 42
       weight_decay: 0.1
-      warmup_steps: 153
-      warmdown_steps: 610
+      warmup_steps: 488
+      warmdown_steps: 1953
       shuffle_buffer_records: 32768
       shuffle_buffer_bytes: 1073741824
-      checkpoint_every: 250
-      evaluate_every: 250
+      checkpoint_every: 500
+      evaluate_every: 500
       evaluation_max_records: 512
       evaluation_max_bytes: 16777216
