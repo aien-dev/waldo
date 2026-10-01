@@ -168,6 +168,13 @@ design; it must not be used to judge the corpus recipe.
 - Every eligible corpus contributes positive token targets.
 - No capability or factual-quality threshold applies to this 16M model.
 
+Observed result: `foundation-mixture-canary-01` run `84c76087cb8bf05c`
+completed 50,003,968 token targets. Consumption was 31,277,194 Wikimedia
+(62.549%), 12,465,512 PressBooks (24.929%), and 6,261,262 PLOS (12.522%). All
+three deviations were below 0.1 percentage points. Held-out loss fell from
+10.8795 to a final-best 5.0871, and the reloaded artifact matched. Gate 1
+passes.
+
 ### Gate 2: small pilot
 
 - Gate 1 passes.
