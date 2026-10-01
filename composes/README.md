@@ -1,506 +1,175 @@
-# Model-building ladder
-
-Each model must reach a testable endpoint before the next rung begins. A model
-inherits the previous checkpoint when its architecture and tokenizer remain
-compatible. A different architecture starts new weights but reuses the proven
-corpus recipe, training process, and evaluation gates.
-
-Runtime estimates cover training after data and the environment are ready.
-They are planning ranges until replaced by observed WALDO run evidence.
-
-The numbered ladder also owns the measured capability-per-FLOP comparison.
-`0000-canary.yaml` and `0001-babble.yaml` are the systems gates,
-`0002-conversation.yaml` records the undertrained 2.4B-token experiment,
-`0003-conversation.yaml` is the corrected 12B-token comparison baseline, and
-`0004-conversation.yaml` is the larger `conversation3` candidate. Do not run
-the larger candidate until the correctness, data-plane, batch-semantics, and
-evaluation gates in the [training robustness plan](../docs/TRAINING-ROBUSTNESS-PLAN.md)
-pass. Corpus and license differences are tracked in the
-[compose corpus licensing audit](../docs/COMPOSE-CORPUS-LICENSE-AUDIT.md) and
-[nanochat coverage audit](../docs/NANOCHAT-CORPUS-COVERAGE.md).
-
-Every conversational rung includes the compact `waldo-project-v1` corpus so
-models learn stable facts about WALDO and the responsibilities of open-source
-AI without treating WALDO as the assistant's identity.
-
-Stages are weight-changing operations and execute strictly in YAML order. Keep
-broad foundation data first, domain or technical adaptation next, conversation
-training after that, and narrow assistant, alignment, or tool-use training
-last. If the relative order of completed stages is corrected, use a new model;
-replaying an existing model cannot retroactively change its training order.
-See [Stage ordering is part of the model design](../docs/MODEL-COMPOSE.md#stage-ordering-is-part-of-the-model-design).
-
-For domain knowledge, lead with explanatory reference material and question/
-answer text. Source code and expert discussions are valuable supporting data,
-but a mixture dominated by patches, issue traffic, or mailing-list replies can
-teach domain vocabulary without reliably teaching basic facts. Keep enough
-general instruction data after domain training to make the knowledge usable,
-then finish with the narrowest validated behavior stage.
-
-## Canary / smoke test (`0000-canary.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | Existing compose; ready |
-| Builds from | Random initialization |
-| Model type | Small dense monolithic model; approximately 14M parameters |
-| Recommended hardware | Apple M4 Max with 128 GB unified memory |
-| Approximate runtime | 1-3 minutes |
-
-Success criteria:
-
-- The model may be unusable.
-- Training and evaluation complete.
-- Checkpoint and resume work.
-- The exported artifact runs inference.
-
-Corpus requirements:
-
-- Small raw-text sample.
-- Small structured-conversation sample.
-- Current selection is sufficient.
-
-WALDO requirements:
-
-- Basic ingestion and compose.
-- Training lifecycle and artifact verification.
-- Inference.
-- Current support is sufficient.
-
-## Babbling model (`0001-babble.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | Existing compose; ready for a formally evaluated run |
-| Builds from | Random initialization using the canary-proven pipeline |
-| Model type | Small dense monolithic foundation; approximately 76M parameters |
-| Recommended hardware | 1x NVIDIA H100 80 GB |
-| Approximate runtime | Measure from promoted G0 evidence for the 600M-token ceiling |
-
-This systems-gate compose is for private research while Gutenberg and PLOS
-record-level rights are under review. It intentionally omits the
-`distributable` policy, retains full corpus provenance, and must not be used as
-evidence that its resulting model can be distributed.
-
-Success criteria:
-
-- Stable short-form language.
-- Improving held-out loss.
-- Simple corpus recall.
-- No repetition collapse.
-
-Corpus requirements:
-
-- Edited prose from Gutenberg.
-- Reference text from Wikimedia.
-- Scientific exposition from PLOS.
-- Current selection is sufficient for this rung.
-
-WALDO requirements:
-
-- Current dense training.
-- Fixed generation tests in addition to held-out loss.
-
-## Conversation level 2 (`0002-conversation.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | Completed 2.4B-token experiment; materially undertrained and not the known-good baseline |
-| Builds from | New larger initialization using the babbling model's proven recipe and tests |
-| Model type | Dense monolithic foundation plus conversation SFT; approximately 337M parameters |
-| Recommended hardware | 1x 8-GPU NVIDIA H100 SXM system |
-| Approximate runtime | Measure from promoted G1 evidence for the 2.4B-token ceiling |
-
-Success criteria:
-
-- Direct answers and simple constraint following.
-- Prior-turn context and correction handling.
-- Necessary clarification.
-- No tool-call syntax.
-
-Corpus requirements:
-
-- Natural multi-turn dialogue.
-- Broad instruction data.
-- Quality-filtered responses.
-- Bounded Interaction Contract examples.
-
-WALDO requirements:
-
-- Causal conversation modeling is retained in 0002 as the historical comparison point.
-- Add fixed conversation tests.
-- Replay foundation regression tests.
-
-## Conversation level 3 (`0003-conversation.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | Corrected 12B-token comparison baseline; rerun under a fresh model name after artifact-integrity fixes |
-| Builds from | Fresh random initialization; same core architecture and first three corpus stages as 0002, with lossless float32 portable weights |
-| Model type | Dense monolithic foundation plus conversation SFT; approximately 337M parameters |
-| Recommended hardware | 1x 8-GPU NVIDIA H100 SXM system |
-| Approximate runtime | Measure directly; approximately five times the pretraining exposure of 0002 |
-
-Success criteria:
-
-- Restore direct answers, basic factual grounding, and simple constraint following.
-- Preserve prior-turn context and correction handling.
-- Avoid the repetition collapse observed in the 2.4B-token run.
-- Beat 0002 on fixed foundation and conversation evaluations.
-
-Corpus requirements:
-
-- The exact 0002 corpus selection and weights for its first three stages.
-- 12B pretraining tokens, one bounded pass over each broad conversation stage,
-  then five low-rate passes over the compact WALDO project grounding corpus.
-
-WALDO requirements:
-
-- Train under a fresh model name; do not append pretraining after 0002 post-training.
-- Apply assistant-only response loss during both conversation stages.
-- Use lower conversation-stage learning rates and one pass to limit the held-out-loss regression observed in the initial 0003 run.
-- Keep the portable artifact in float32 until reduced-precision publication
-  passes WALDO's live-versus-publishable loss check for this architecture.
-- Keep compiled execution disabled until compiled and eager held-out losses
-  agree throughout a representative run.
-- Select project grounding against its own held-out set rather than allowing
-  the much larger broad SFT mixture to hide failure to learn WALDO facts.
-- Add fixed side-by-side generation and held-out evaluations.
-- Pass `./testing/training-acceptance.sh --hostfile PATH --corpus
-  SMALL_CONVERSATION_INDEX_PATH` on the target Linux GPU hosts before starting
-  the full run.
-
-## Conversation level 4 (`0004-conversation.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | Larger candidate; blocked on systems, evaluation, and corpus gates |
-| Builds from | Random initialization with the restored 0003 curriculum embedded first |
-| Model type | Approximately 758M-parameter dense model, 4,096-token context, technical knowledge midtraining, expanded assistant-only SFT, and isolated WALDO grounding |
-| Recommended hardware | 4x NVIDIA H200 GPUs; one or two nodes |
-| Approximate runtime | Determine from promoted G1/G2 evidence for the roughly 6.1B-token curriculum |
-
-Success criteria:
-
-- Clearly improves instruction following, knowledge, and multi-turn coherence over the restored 0003 model.
-- Correctly answers basic factual questions about operating systems, Linux, programming, and systems administration.
-- Improves familiarity with software development, systems, debugging, review, and technical documentation.
-- Preserves the baseline's directness, correction handling, and no-tool behavior.
-- Passes the baseline conversation and foundation regression tests.
-
-Corpus requirements:
-
-- Cosmopedia v2 educational material, Stack Exchange technical Q&A, PLOS, and
-  Wikimedia form the majority of the 5B-token foundation mixture.
-- Linux/GNU and cloud-native source, repository documentation, and a bounded
-  amount of Linux, Git, and Python development discussion provide concrete
-  systems vocabulary in a separate 1B-token stage. Known non-English rows are
-  excluded; legacy rows without language metadata are retained.
-- Tulu 3, Smol-SmolTalk, and UltraChat provide broader assistant supervision.
-- The validated Interaction Contract and HelpSteer2 behavior anchor follows
-  broad SFT and immediately precedes the narrow project-grounding stage.
-
-WALDO requirements:
-
-- Use assistant-only loss for every structured conversation stage; role
-  markers, user prompts, and system context remain conditioning input.
-- Keep portable parameters in float32 until this larger architecture has
-  passed the reduced-precision artifact-integrity gate.
-- Keep compiled execution disabled until it passes the compiled/eager
-  equivalence gate.
-- Evaluate the final WALDO grounding stage on its own held-out records.
-- A fresh model is required because conversation3 has more than twice the
-  parameter capacity and context length of the 0003 conversation model as well as a corrected
-  stage order.
-- Fixed side-by-side conversation evaluations.
-- Promote only when it beats the previous rung without material regression.
-- Train this compose under a fresh model name; the numeric compose prefix
-  describes its ladder position, not its model artifact name.
-
-## Tool-use model (`holding/tool-use.yaml`)
-
-| Field | Plan |
-| --- | --- |
-| Status | On hold until the next conversation model is trained, evaluated, and promoted |
-| Builds from | Placeholder `conversation` model; update the base and architecture before use |
-| Model type | Dense conversation model plus tool-use SFT; approximately 337M parameters after revision |
-| Recommended hardware | 1x NVIDIA H200 141 GB |
-| Approximate runtime | 1-2 hours for the 20M-token tool-only stage |
-
-Success criteria:
-
-- Decides whether a tool is needed.
-- Calls only a provided tool with schema-valid arguments.
-- Handles results and errors.
-- Grounds the final answer in tool results.
-- Retains conversation quality.
-
-Corpus requirements:
-
-- One normalized call protocol.
-- Matched tool and no-tool cases.
-- Unavailable-tool and clarification cases.
-- Invalid-argument, empty-result, and error cases.
-- Result-grounding examples.
-
-WALDO requirements:
-
-- Verified trained-parent initialization and lineage (supported).
-- Selectable tool-data categories.
-- Fixed tool and conversation regression tests.
-- Tool-specific metrics.
-- Inference tool registry and execution loop.
-
-## Capable dense foundation model
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; corpus and evaluation work required |
-| Builds from | New larger initialization using all proven dense recipes and foundation tests |
-| Model type | Dense foundation; initial target approximately 3B parameters |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 3-6 days for an initial 3B-parameter, 60B-token candidate |
-
-Success criteria:
-
-- Useful general language and factual knowledge.
-- Summarization and technical understanding.
-- Code completion and mathematical competence.
-- All capabilities are evaluated before assistant tuning.
-
-Corpus requirements:
-
-- Reference prose, books, and education.
-- Science, technical documentation, and code.
-- Mathematics, law, and measured multilingual material.
-- Add open textbooks, stronger mathematics, and Stack V2 Edu.
-
-WALDO requirements:
-
-- Corpus-mixture reporting and cross-corpus deduplication.
-- Contamination checks and domain evaluations.
-- Scaling forecasts and checkpoint comparison.
-
-## Capable dense assistant
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; follows the capable dense foundation |
-| Builds from | Promoted capable dense foundation checkpoint |
-| Model type | Dense foundation plus conversation and instruction SFT |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 2-6 hours for approximately 200M-500M SFT tokens |
-
-Success criteria:
-
-- Passes the complete conversation gate at higher quality.
-- Retains foundation knowledge and skills.
-- Avoids excessive refusal, verbosity, and template repetition.
-
-Corpus requirements:
-
-- Human and natural dialogue anchors.
-- Filtered broad instruction data.
-- High-quality scored responses.
-- Bounded reviewed Interaction Contract examples.
-
-WALDO requirements:
-
-- Explicit parent artifacts.
-- Immutable behavioral evaluation splits.
-- Assistant-only loss and regression reporting.
-
-## Reasoning assistant
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; training corpus is incomplete |
-| Builds from | Promoted capable dense assistant checkpoint |
-| Model type | Dense assistant plus reasoning post-training |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 4-12 hours for approximately 500M-2B verified post-training tokens |
-
-Success criteria:
-
-- Multi-step mathematical and scientific problem solving.
-- Code generation validated by tests.
-- Planning with verifiable outcomes.
-- No regression in conversation or foundation gates.
-
-Corpus requirements:
-
-- Redistributable worked problems and proofs.
-- Executable code tasks and scientific reasoning.
-- OpenWALDO-generated examples with independently verified answers and complete
-  provenance.
-
-WALDO requirements:
-
-- Reasoning-specific record types and answer verification.
-- Sandboxed code and test execution.
-- Contamination controls and benchmark regression gates.
-
-## Reliable tool and agent assistant
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; depends on the reasoning and basic tool gates |
-| Builds from | Promoted reasoning assistant checkpoint |
-| Model type | Dense reasoning assistant plus agentic tool post-training |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 2-8 hours for approximately 200M-1B trajectory tokens |
-
-Success criteria:
-
-- Retains basic tool selection and execution.
-- Plans multi-step work and selects among multiple tools.
-- Recovers from failures with bounded retries.
-- Stops correctly.
-
-Corpus requirements:
-
-- Normalized multi-step tool traces.
-- Alternate plans, partial results, failures, and retries.
-- Permission boundaries.
-- Ordinary no-tool conversation anchors.
-
-WALDO requirements:
-
-- Stateful tool-loop evaluation.
-- Sandboxed executable environments.
-- Trajectory metrics and end-to-end agent regression tests.
-
-## Small sparse-MoE proof
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; WALDO does not yet support sparse-MoE training |
-| Builds from | Random initialization using the proven dense pipeline, corpus contracts, and evaluations |
-| Model type | Small sparse-MoE foundation; target 1B-3B total and 300M-700M active parameters |
-| Recommended hardware | 1x 8-GPU NVIDIA H200 or B200 SXM system |
-| Approximate runtime | 4-12 hours for a bounded 2B-5B-token proof |
-
-Success criteria:
-
-- Training and resume are reliable.
-- No expert collapse and acceptable load balance.
-- Matches a comparable dense control on a bounded language task.
-
-Corpus requirements:
-
-- Babbling-model foundation mixture.
-- No new knowledge corpus is required; this rung tests routing.
-
-WALDO requirements:
-
-- Sparse architecture declarations.
-- Total, active, and trainable parameter accounting.
-- Expert parallelism and router metrics.
-- Distributed checkpoints and MoE-aware forecasting.
-
-## OpenWALDO sparse-MoE foundation and assistant
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; follows the small sparse-MoE proof |
-| Builds from | A scaled MoE configuration starts new foundation weights; conversation, reasoning, and tools then inherit promoted checkpoints |
-| Model type | Target 10B-20B total and 2B-4B active sparse-MoE foundation with successive assistant checkpoints |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 4-10 days for a 50B-100B-token foundation candidate; post-training adds approximately 1 day |
-
-Success criteria:
-
-- Meets the capable dense foundation and assistant gates.
-- Shows useful compute efficiency.
-- Maintains healthy routing through post-training.
-
-Corpus requirements:
-
-- Complete capable-foundation mixture.
-- Enough domain and language diversity to exercise experts.
-- Mixture controls that prevent one source from dominating routing.
-
-WALDO requirements:
-
-- Packed training data and distributed topology planning.
-- Native artifact sets and expert-level telemetry.
-- NeMo/Megatron backend.
-
-## Nemotron 30B foundation adaptation
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; begins after the smaller sparse-MoE path is proven |
-| Builds from | Pinned Nemotron-3 Nano 30B-A3B Base; starts an external model lineage |
-| Model type | Native 30B-total, approximately 3.5B-active hybrid Mamba/Transformer sparse-MoE using full-parameter continued pretraining |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system with 2 TB host RAM and 8-16 TB local NVMe |
-| Approximate runtime | 2-4 hours for 1B training tokens; 10-18 hours for 5B tokens, plus preparation and evaluation |
-
-Success criteria:
-
-- Improves selected WALDO knowledge domains.
-- Avoids unacceptable base-model regression.
-- Maintains healthy expert routing.
-- Resumes exactly and produces a verified native export.
-
-Corpus requirements:
-
-- Reviewed capable-foundation mixture.
-- Initial bounded 1B-token proof.
-- Optional 5B-token candidate after the proof passes.
-
-WALDO requirements:
-
-- Pinned native-model import and Nemotron tokenizer/configuration.
-- Packed data and NeMo/Megatron execution.
-- Native distributed checkpoints.
-- MoE and base-model regression evaluation.
-
-## Nemotron 30B post-training
-
-| Field | Plan |
-| --- | --- |
-| Status | Planned; last rung in this ladder |
-| Builds from | Promoted Nemotron foundation-adaptation checkpoint; conversation, reasoning, and tools produce separate ordered checkpoints |
-| Model type | Native sparse-MoE foundation plus full SFT or LoRA adapters |
-| Recommended hardware | 1x 8-GPU NVIDIA B200 SXM system |
-| Approximate runtime | 4-12 hours for conversation, reasoning, tools, evaluation, and export |
-
-Success criteria:
-
-- Each stage passes its corresponding smaller-model gate.
-- Every earlier foundation and behavior gate remains passing.
-- Adapters and merged artifacts are reproducible.
-
-Corpus requirements:
-
-- Reviewed conversation mixture.
-- Verified reasoning mixture.
-- Normalized tool mixture.
-- Nemotron-native rendering.
-
-WALDO requirements:
-
-- Native chat and tool templates.
-- Adapter lineage and stage-specific evaluation.
-- Native and merged exports.
-- Inference tool loop.
-
-## Next steps
-
-- Freeze the language, conversation, and tool evaluation sets.
-- Preserve `conversation1` as the 2.4B-token diagnostic result.
-- Train `0003-conversation` as `conversation2` and compare it with conversation1.
-- Train `0004-conversation` as `conversation3` only after the restored baseline
-  passes. Its larger architecture cannot reuse the earlier weights.
-- Keep tool-use training on hold until a conversation checkpoint is promoted,
-  then update and revalidate `holding/tool-use.yaml` against that parent.
-- Build the capable dense foundation, assistant, reasoning, and agent rungs.
-- Fill the textbook, mathematics, technical, and tool-corpus gaps.
-- Implement and validate the small sparse-MoE proof.
-- Build the OpenWALDO sparse-MoE lineage.
-- Adapt the Nemotron foundation, then run its separate conversation, reasoning,
-  and tool post-training stages.
-
-The supporting native-model and backend design is in the
-[foundation and sparse-MoE plan](../docs/FOUNDATION-MOE-PLAN.md).
+# Foundation model ladder
+
+This directory is a stop/go experiment, not a queue of models to run. Train
+one rung, record its evidence, and continue only after it passes every gate.
+The failed `conversation6` ladder is preserved unchanged in
+[`archive/2026-09-conversation6`](archive/2026-09-conversation6/).
+
+## Why we restarted
+
+`conversation6` did not first fail during conversation tuning. Its 12B-token
+foundation checkpoint completed cleanly and had plausible held-out loss, but
+raw deterministic generation already invented a political biography for
+`Linux is`. Later tuning merely changed that failure into repetitive,
+content-poor answers. This proves that loss, successful execution, and more
+tokens are not sufficient promotion criteria.
+
+The new ladder isolates foundation learning. It uses one fixed, prose-heavy
+mixture, two model sizes, short pilots before full runs, float32 portable
+parameters, eager execution, and deterministic checkpoint evaluation. No
+conversation or instruction data enters this ladder.
+
+## Rules
+
+1. Use a fresh model name for every run. Never append a changed recipe to an
+   existing model.
+2. Run only the next unqualified rung. A failure stops the ladder.
+3. Evaluate the selected artifact and intermediate checkpoints, not merely the
+   final model name.
+4. Use temperature zero and the exact prompts below. Do not tune the questions
+   after seeing an answer.
+5. Preserve the compose, run summary, run IDs, scores, loss history, and sample
+   output for every decision.
+6. Change one experimental variable at a time after a failure. Repeat the
+   failed rung; do not advance.
+7. Do not add conversational tuning until `0004-foundation-medium.yaml` passes.
+
+For seed repeats, copy the qualifying compose into the saved run evidence and
+change only `seed`; do not silently edit the numbered reference compose.
+
+## Rungs
+
+| Rung | Suggested model name | Approximate size | Token request | Question answered |
+| --- | --- | ---: | ---: | --- |
+| `0000-foundation-canary.yaml` | `foundation-canary-01` | 16M | 5M | Does the complete pipeline work? |
+| `0001-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 50M | Does this recipe begin learning coherent language cheaply? |
+| `0002-foundation-small.yaml` | `foundation-small-01` | 76M | 600M | Can the small model meet a real capability floor? |
+| `0003-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 300M | Does scaling the architecture improve the fixed evaluation? |
+| `0004-foundation-medium.yaml` | `foundation-medium-01` | 337M | 2.4B | Is the foundation good enough to justify conversational tuning? |
+
+The small pilot and qualification use the same architecture and recipe. The
+medium pair does likewise. Only the token budget and observation cadence
+change within each pair.
+
+## Run procedure
+
+For each rung:
+
+```console
+waldo model forecast composes/0000-foundation-canary.yaml
+waldo model train foundation-canary-01 composes/0000-foundation-canary.yaml
+```
+
+Record every completed run ID. Test a specific artifact rather than whatever
+run happens to be selected by the model name:
+
+```console
+waldo model chat foundation-canary-01 \
+  --run-id RUN_ID --raw --temperature 0 --max-tokens 80 \
+  "The Linux kernel is"
+```
+
+Run all 15 prompts against the initial checkpoint, intermediate checkpoints,
+the selected checkpoint, and the published artifact when available. A
+published artifact must produce materially equivalent loss and generations to
+its selected checkpoint.
+
+## Fixed evaluation prompts
+
+Factual and definitional continuations:
+
+1. `The Linux kernel is`
+2. `Linux is an operating system whose kernel was created by`
+3. `The capital city of France is`
+4. `At sea level, water freezes at`
+5. `Earth orbits`
+6. `A central processing unit (CPU) is`
+7. `The programming language Python was created by`
+8. `Two plus two equals`
+9. `Plants use sunlight to`
+10. `An operating system manages`
+
+Coherence continuations:
+
+11. `Once upon a time`
+12. `The experiment failed because`
+13. `To install software on Linux,`
+14. `A backup is useful because`
+15. `The scientist compared the results and concluded`
+
+Score each response before looking at the aggregate:
+
+- **0:** incoherent, contradictory, unrelated, or fabricated in a way that
+  defeats the prompt.
+- **1:** grammatical and relevant, but incomplete, vague, or partly wrong.
+- **2:** coherent, materially correct, and directly continues the prompt.
+
+A response has a repetition failure if a phrase or sentence loops more than
+twice or the answer makes no progress across successive sentences.
+
+## Promotion gates
+
+### Gate 0: canary
+
+- Training, evaluation, checkpointing, resume, publication, and inference all
+  complete without non-finite values.
+- Token accounting is exact and held-out loss moves downward.
+- The selected checkpoint and published artifact agree within the existing
+  artifact-integrity tolerance.
+- All 15 prompts produce non-empty output. No knowledge score is required.
+
+### Gate 1: small pilot
+
+- Gate 0 still passes.
+- Fixed-prompt score is at least **15/30**.
+- At least **12/15** responses avoid repetition failure.
+- The later checkpoints improve both held-out loss and prompt score over the
+  early checkpoint. If loss improves while prompt score degrades, stop.
+
+### Gate 2: small qualification
+
+- Fixed-prompt score is at least **22/30**.
+- Every factual prompt scores at least 1.
+- No response has a repetition failure.
+- The selected checkpoint beats the small pilot; continued training has not
+  crossed a visible capability peak.
+- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
+  at least 20/30 and avoid repetition collapse before scaling the model.
+
+### Gate 3: medium pilot
+
+- Fixed-prompt score is at least **22/30**, with no repetition failure.
+- It matches the small qualification after half as many training tokens, or
+  shows a clear checkpoint trend likely to exceed it at the full budget.
+- No more than two individual prompts regress relative to the qualified small
+  model.
+
+### Gate 4: medium qualification
+
+- Fixed-prompt score is at least **27/30**.
+- At least 9 of the 10 factual prompts score 2; every factual prompt scores at
+  least 1.
+- No response has a repetition failure.
+- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
+  at least 25/30 and pass artifact integrity.
+- Only after this gate passes may a separate conversational-tuning ladder be
+  designed. Foundation prompts remain permanent regression tests.
+
+## Questions to answer at every rung
+
+Record short, evidence-backed answers with the run results:
+
+1. Did held-out loss and fixed-prompt capability improve together?
+2. At which checkpoint did prompt score peak?
+3. Did any corpus dominate sampled tokens beyond its declared weight?
+4. Did any host, rank, or resume event change token accounting or loss?
+5. Are selected-checkpoint and published-artifact results equivalent?
+6. Which failures are factual, incoherent, repetitive, or off-topic?
+7. Does the result justify the cost of the next rung?
+
+If a rung fails, investigate the smallest relevant variable: corpus samples
+and weights, tokenizer, initialization, learning rate and schedule, effective
+global batch, or architecture. Do not compensate for a broken foundation with
+instruction data.
+
+`holding/tool-use.yaml` remains intentionally outside this ladder.
