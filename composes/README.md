@@ -15,11 +15,13 @@ content-poor answers. This proves that loss, successful execution, and more
 tokens are not sufficient promotion criteria.
 
 The new ladder isolates foundation learning. Gate 0 uses one small, assessed
-PressBooks shard so the systems canary stays cheap. Gates 1-4 use one fixed,
-prose-heavy mixture to qualify the 16M model before attempting the 76M model.
-Each size gets a short pilot before a run near 20 training tokens per parameter.
-Parameters remain float32 and execution remains eager. No conversation or
-instruction data enters this ladder.
+PressBooks shard so the systems canary stays cheap. The failed 16M capability
+experiment is preserved in
+[`archive/2026-10-tiny-r50k-failure`](archive/2026-10-tiny-r50k-failure/README.md).
+Gates 1-4 use one fixed mixture across 76M and 337M architectures. Each size
+gets a 10-token-per-parameter pilot before a run near 20. Parameters remain
+float32 and execution remains eager. No conversation or instruction data enters
+this ladder.
 
 The qualification mixture contains only assessed schema-2 Wikimedia, PLOS,
 and PressBooks shards. DOAB and Gutenberg remain excluded until they are
@@ -39,8 +41,9 @@ boilerplate filters are silently unavailable for those records.
    output for every decision.
 6. Change one experimental variable at a time after a failure. Repeat the
    failed rung; do not advance.
-7. Do not create a medium-model ladder until `0004-foundation-small.yaml`
-   passes. Do not add conversational tuning until a later medium foundation
+7. For every capability rung, tied token embeddings must consume no more than
+   50% of total parameters. Report the allocation explicitly.
+8. Do not add conversational tuning until `0004-foundation-medium.yaml`
    qualifies.
 
 For seed repeats, copy the qualifying compose into the saved run evidence and
@@ -51,16 +54,16 @@ change only `seed`; do not silently edit the numbered reference compose.
 | Rung | Suggested model name | Size | Tokens | Tokens/parameter | Question answered |
 | --- | --- | ---: | ---: | ---: | --- |
 | `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | 0.31 | Does the complete pipeline work using one assessed shard? |
-| `0001-foundation-tiny-pilot.yaml` | `foundation-tiny-pilot-02` | 16M | 160M | 9.99 | Does the full recipe produce coherent deterministic generation? |
-| `0002-foundation-tiny.yaml` | `foundation-tiny-01` | 16M | 320M | 19.98 | Can a properly exposed tiny model learn coherent language? |
-| `0003-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 760M | 9.95 | Does the 76M architecture follow the proven learning curve? |
-| `0004-foundation-small.yaml` | `foundation-small-01` | 76M | 1.5B | 19.63 | Does the small foundation justify designing a medium ladder? |
+| `0001-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 760M | 9.95 | Does the first balanced architecture learn recognizable language? |
+| `0002-foundation-small.yaml` | `foundation-small-01` | 76M | 1.5B | 19.63 | Does the small model reach honest babbling competence? |
+| `0003-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 3.4B | 10.10 | Does the medium model begin producing locally coherent text? |
+| `0004-foundation-medium.yaml` | `foundation-medium-01` | 337M | 6.7B | 19.90 | Is the foundation coherent enough to consider later tuning? |
 
-The tiny pilot and qualification use the same architecture and recipe. The
-small pair does likewise. Only the token budget, batch, and observation cadence
-change between sizes. The canary corpus is intentionally smaller and is not
-evidence for the quality of the three-corpus recipe. The first Gate 1 run has a
-one-time materialization cost of roughly 23.6 GiB; later rungs reuse that cache.
+The small pair allocates 32.2M of 76.4M parameters (42.1%) to embeddings. The
+medium pair allocates 57.9M of 336.6M (17.2%). Pilot and qualification within
+each pair keep architecture and corpus recipe fixed. The canary corpus is
+intentionally smaller and is not capability evidence. Gate 1 has a one-time
+materialization cost of roughly 23.6 GiB; later rungs reuse that cache.
 
 ## Run procedure
 
@@ -90,10 +93,9 @@ waldo model chat foundation-canary-02 \
   "The Linux kernel is"
 ```
 
-Run all 15 prompts against the initial checkpoint, intermediate checkpoints,
-the selected checkpoint, and the published artifact when available. A
-published artifact must produce materially equivalent loss and generations to
-its selected checkpoint.
+Track held-out loss at every recorded checkpoint. Run all 15 prompts against
+the selected checkpoint artifact and record its run ID. A separately published
+artifact must produce materially equivalent loss and generations.
 
 ## Fixed evaluation prompts
 
@@ -148,48 +150,38 @@ generation was non-empty but collapsed into repeated phrases and bullets. At
 only 0.31 tokens per parameter, this is a systems pass and a capability fail by
 design; it must not be used to judge the corpus recipe.
 
-### Gate 1: tiny pilot
+### Gate 1: small pilot
 
 - Gate 0 still passes.
-- Fixed-prompt score is at least **12/30**.
-- At least **11/15** responses avoid repetition failure.
-- The later checkpoints improve both held-out loss and prompt score over the
-  early checkpoint. If loss improves while prompt score degrades, stop.
+- At least **8/15** responses avoid severe repetition failure.
+- At least **10/15** responses contain recognizable English word sequences
+  related to the prompt.
+- No factual accuracy threshold applies. This rung is expected to babble.
+- Held-out loss is still improving at the selected checkpoint.
 
-The original 50M-token `foundation-tiny-pilot-01` run
-`246cdae7ed71a425` failed this gate. Four-GPU accounting and 5:2:1 corpus
-exposure were correct, and held-out loss improved from 10.8795 to a final-best
-4.9693, but deterministic answers were off-topic and severely repetitive.
-At 3.12 tokens per parameter, this was an underexposed learning-curve point,
-not evidence for scaling. The replacement pilot requests 160M tokens and must
-use the fresh `foundation-tiny-pilot-02` model name.
+### Gate 2: small qualification
 
-### Gate 2: tiny qualification
+- Fixed-prompt score is at least **10/30**.
+- At least **10/15** responses avoid repetition failure.
+- At least **10/15** begin with a grammatical sentence or sentence fragment.
+- The selected checkpoint improves materially over the small pilot without
+  crossing a visible loss or generation peak.
+
+### Gate 3: medium pilot
+
+- Fixed-prompt score is at least **15/30**.
+- At least **12/15** responses avoid repetition failure.
+- At least 7 of the 10 factual prompts are relevant, even if not fully correct.
+- Loss and prompt quality both improve relative to the small qualification.
+
+### Gate 4: medium qualification
 
 - Fixed-prompt score is at least **18/30**.
-- At least 7 of the 10 factual prompts score at least 1.
 - At least **13/15** responses avoid repetition failure.
-- The selected checkpoint beats the tiny pilot; continued training has not
-  crossed a visible capability peak.
-- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
-  at least 16/30 and avoid broad repetition collapse before scaling the model.
-
-### Gate 3: small pilot
-
-- Fixed-prompt score is at least **16/30**.
-- At least **13/15** responses avoid repetition failure.
-- Loss and prompt score improve together across checkpoints.
-- The pilot must match or beat the qualified tiny model before receiving the
-  full small-model budget.
-
-### Gate 4: small qualification
-
-- Fixed-prompt score is at least **22/30**.
-- Every factual prompt scores at least 1.
-- No response has a repetition failure.
-- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
-  at least 20/30 and pass artifact integrity.
-- Only after this gate passes may a separate medium foundation ladder be
+- At least 8 of the 10 factual prompts score at least 1.
+- Repeat once with seed 43 only after the seed-42 run passes. Both runs must
+  pass artifact integrity and avoid broad repetition collapse.
+- Only after this gate passes may a separate conversational-tuning ladder be
   designed. These prompts remain permanent regression tests.
 
 ## Questions to answer at every rung

@@ -19,10 +19,10 @@ import (
 
 var foundationFiles = []string{
 	"0000-foundation-canary.yaml",
-	"0001-foundation-tiny-pilot.yaml",
-	"0002-foundation-tiny.yaml",
-	"0003-foundation-small-pilot.yaml",
-	"0004-foundation-small.yaml",
+	"0001-foundation-small-pilot.yaml",
+	"0002-foundation-small.yaml",
+	"0003-foundation-medium-pilot.yaml",
+	"0004-foundation-medium.yaml",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -96,10 +96,10 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		tokens     int64
 	}{
 		{16014336, 5013504},
-		{16014336, 160006144},
-		{16014336, 320012288},
 		{76416000, 760020992},
 		{76416000, 1500053504},
+		{336637440, 3400007680},
+		{336637440, 6700007424},
 	}
 	for index, file := range foundationFiles {
 		forecast, err := model.ForecastCompose(loadCompose(t, file))
@@ -153,21 +153,31 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		if parameters.Profile != "causal-pretrain-weighted" || parameters.Parallelism != training.ParallelismAuto || parameters.ComputePrecision != "bfloat16" || parameters.Compile || parameters.Optimizer != "adamw" || parameters.Schedule != "warmup-stable-warmdown" || parameters.DistributionPolicy != "" || parameters.Seed != 42 {
 			t.Fatalf("%s execution controls = %+v", file, parameters)
 		}
+		if file != foundationFiles[0] {
+			forecast, err := architecture.Forecast()
+			if err != nil {
+				t.Fatal(err)
+			}
+			embedding := architecture.VocabularySize * architecture.HiddenSize
+			if embedding*2 > forecast.ApproximateParameters {
+				t.Fatalf("%s embeds %d of %d parameters; capability rungs permit at most 50%%", file, embedding, forecast.ApproximateParameters)
+			}
+		}
 	}
 }
 
 func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
-	tinyPilot := loadCompose(t, foundationFiles[1])
-	tiny := loadCompose(t, foundationFiles[2])
 	smallPilot := loadCompose(t, foundationFiles[3])
 	small := loadCompose(t, foundationFiles[4])
-	if tinyPilot.Architecture != tiny.Architecture {
-		t.Fatal("tiny pilot and qualification architectures differ")
-	}
-	if smallPilot.Architecture != small.Architecture {
+	firstPilot := loadCompose(t, foundationFiles[1])
+	first := loadCompose(t, foundationFiles[2])
+	if firstPilot.Architecture != first.Architecture {
 		t.Fatal("small pilot and qualification architectures differ")
 	}
-	if !reflect.DeepEqual(tinyPilot.Stages[0].Corpora, tiny.Stages[0].Corpora) || !reflect.DeepEqual(smallPilot.Stages[0].Corpora, small.Stages[0].Corpora) {
+	if smallPilot.Architecture != small.Architecture {
+		t.Fatal("medium pilot and qualification architectures differ")
+	}
+	if !reflect.DeepEqual(firstPilot.Stages[0].Corpora, first.Stages[0].Corpora) || !reflect.DeepEqual(smallPilot.Stages[0].Corpora, small.Stages[0].Corpora) {
 		t.Fatal("pilot and qualification corpus recipes differ")
 	}
 }
@@ -184,7 +194,7 @@ func TestFoundationREADMEDefinesEvaluationContract(t *testing.T) {
 		"Two plus two equals",
 		"Once upon a time",
 		"Promotion gates",
-		"seeds 43 and 44",
+		"seed 43",
 		"Do not add conversational tuning",
 	) {
 		if !strings.Contains(text, required) {

@@ -1,4 +1,4 @@
-# Gate 3: verify the 76M architecture near 10 training tokens per parameter.
+# Gate 1: verify the 76M architecture near 10 training tokens per parameter.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
