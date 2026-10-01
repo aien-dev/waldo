@@ -19,10 +19,10 @@ import (
 
 var foundationFiles = []string{
 	"0000-foundation-canary.yaml",
-	"0001-foundation-small-pilot.yaml",
-	"0002-foundation-small.yaml",
-	"0003-foundation-medium-pilot.yaml",
-	"0004-foundation-medium.yaml",
+	"0001-foundation-tiny-pilot.yaml",
+	"0002-foundation-tiny.yaml",
+	"0003-foundation-small-pilot.yaml",
+	"0004-foundation-small.yaml",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -96,10 +96,10 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		tokens     int64
 	}{
 		{16014336, 5013504},
-		{76416000, 50003968},
-		{76416000, 600047616},
-		{336637440, 300023808},
-		{336637440, 2400059392},
+		{16014336, 50003968},
+		{16014336, 320012288},
+		{76416000, 300023808},
+		{76416000, 1500053504},
 	}
 	for index, file := range foundationFiles {
 		forecast, err := model.ForecastCompose(loadCompose(t, file))
@@ -158,17 +158,17 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 }
 
 func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
-	smallPilot := loadCompose(t, foundationFiles[1])
-	small := loadCompose(t, foundationFiles[2])
-	mediumPilot := loadCompose(t, foundationFiles[3])
-	medium := loadCompose(t, foundationFiles[4])
+	tinyPilot := loadCompose(t, foundationFiles[1])
+	tiny := loadCompose(t, foundationFiles[2])
+	smallPilot := loadCompose(t, foundationFiles[3])
+	small := loadCompose(t, foundationFiles[4])
+	if tinyPilot.Architecture != tiny.Architecture {
+		t.Fatal("tiny pilot and qualification architectures differ")
+	}
 	if smallPilot.Architecture != small.Architecture {
 		t.Fatal("small pilot and qualification architectures differ")
 	}
-	if mediumPilot.Architecture != medium.Architecture {
-		t.Fatal("medium pilot and qualification architectures differ")
-	}
-	if !reflect.DeepEqual(smallPilot.Stages[0].Corpora, small.Stages[0].Corpora) || !reflect.DeepEqual(mediumPilot.Stages[0].Corpora, medium.Stages[0].Corpora) {
+	if !reflect.DeepEqual(tinyPilot.Stages[0].Corpora, tiny.Stages[0].Corpora) || !reflect.DeepEqual(smallPilot.Stages[0].Corpora, small.Stages[0].Corpora) {
 		t.Fatal("pilot and qualification corpus recipes differ")
 	}
 }

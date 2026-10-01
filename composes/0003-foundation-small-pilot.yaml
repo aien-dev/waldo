@@ -1,4 +1,4 @@
-# Gate 2: qualify the small architecture before spending on a larger model.
+# Gate 3: verify the 76M architecture before its qualification budget.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
@@ -40,7 +40,7 @@ stages:
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      tokens: 600000000
+      tokens: 300000000
       batch_size: 64
       gradient_accumulation_steps: 4
       compute_precision: bfloat16
@@ -52,11 +52,11 @@ stages:
       schedule: warmup-stable-warmdown
       seed: 42
       weight_decay: 0.1
-      warmup_steps: 458
-      warmdown_steps: 1831
+      warmup_steps: 229
+      warmdown_steps: 916
       shuffle_buffer_records: 32768
       shuffle_buffer_bytes: 1073741824
-      checkpoint_every: 500
-      evaluate_every: 500
+      checkpoint_every: 250
+      evaluate_every: 250
       evaluation_max_records: 512
       evaluation_max_bytes: 16777216

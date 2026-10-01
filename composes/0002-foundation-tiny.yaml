@@ -1,15 +1,15 @@
-# Gate 1: cheaply test whether the small architecture begins learning language.
+# Gate 2: qualify the 16M architecture near 20 training tokens per parameter.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
 architecture:
   family: decoder-transformer
-  context_tokens: 1024
+  context_tokens: 512
   vocabulary_size: 50259
-  hidden_size: 640
-  intermediate_size: 1792
-  layers: 10
-  attention_heads: 10
+  hidden_size: 256
+  intermediate_size: 768
+  layers: 4
+  attention_heads: 4
   key_value_heads: 2
   dropout: 0.0
   qk_normalization: true
@@ -40,23 +40,23 @@ stages:
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      tokens: 50000000
-      batch_size: 64
-      gradient_accumulation_steps: 4
+      tokens: 320000000
+      batch_size: 32
+      gradient_accumulation_steps: 2
       compute_precision: bfloat16
-      activation_checkpointing: true
+      activation_checkpointing: false
       compile: false
-      sequence_length: 1024
-      learning_rate: 0.00025
+      sequence_length: 512
+      learning_rate: 0.0003
       optimizer: adamw
       schedule: warmup-stable-warmdown
       seed: 42
       weight_decay: 0.1
-      warmup_steps: 38
-      warmdown_steps: 153
+      warmup_steps: 977
+      warmdown_steps: 3906
       shuffle_buffer_records: 32768
       shuffle_buffer_bytes: 1073741824
-      checkpoint_every: 100
-      evaluate_every: 100
+      checkpoint_every: 1000
+      evaluate_every: 1000
       evaluation_max_records: 512
       evaluation_max_bytes: 16777216

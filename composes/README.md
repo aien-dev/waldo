@@ -16,9 +16,10 @@ tokens are not sufficient promotion criteria.
 
 The new ladder isolates foundation learning. Gate 0 uses one small, assessed
 PressBooks shard so the systems canary stays cheap. Gates 1-4 use one fixed,
-prose-heavy mixture across two model sizes, with short pilots before full runs,
-float32 portable parameters, eager execution, and deterministic checkpoint
-evaluation. No conversation or instruction data enters this ladder.
+prose-heavy mixture to qualify the 16M model before attempting the 76M model.
+Each size gets a short pilot before a run near 20 training tokens per parameter.
+Parameters remain float32 and execution remains eager. No conversation or
+instruction data enters this ladder.
 
 ## Rules
 
@@ -33,24 +34,26 @@ evaluation. No conversation or instruction data enters this ladder.
    output for every decision.
 6. Change one experimental variable at a time after a failure. Repeat the
    failed rung; do not advance.
-7. Do not add conversational tuning until `0004-foundation-medium.yaml` passes.
+7. Do not create a medium-model ladder until `0004-foundation-small.yaml`
+   passes. Do not add conversational tuning until a later medium foundation
+   qualifies.
 
 For seed repeats, copy the qualifying compose into the saved run evidence and
 change only `seed`; do not silently edit the numbered reference compose.
 
 ## Rungs
 
-| Rung | Suggested model name | Approximate size | Token request | Question answered |
-| --- | --- | ---: | ---: | --- |
-| `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | Does the complete pipeline work using one assessed shard? |
-| `0001-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 50M | Does this recipe begin learning coherent language cheaply? |
-| `0002-foundation-small.yaml` | `foundation-small-01` | 76M | 600M | Can the small model meet a real capability floor? |
-| `0003-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 300M | Does scaling the architecture improve the fixed evaluation? |
-| `0004-foundation-medium.yaml` | `foundation-medium-01` | 337M | 2.4B | Is the foundation good enough to justify conversational tuning? |
+| Rung | Suggested model name | Size | Tokens | Tokens/parameter | Question answered |
+| --- | --- | ---: | ---: | ---: | --- |
+| `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | 0.31 | Does the complete pipeline work using one assessed shard? |
+| `0001-foundation-tiny-pilot.yaml` | `foundation-tiny-pilot-01` | 16M | 50M | 3.12 | Does the full recipe begin improving deterministic generation? |
+| `0002-foundation-tiny.yaml` | `foundation-tiny-01` | 16M | 320M | 19.98 | Can a properly exposed tiny model learn coherent language? |
+| `0003-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 300M | 3.93 | Does the 76M architecture follow the proven learning curve? |
+| `0004-foundation-small.yaml` | `foundation-small-01` | 76M | 1.5B | 19.63 | Does the small foundation justify designing a medium ladder? |
 
-The small pilot and qualification use the same architecture and recipe. The
-medium pair does likewise. Only the token budget and observation cadence
-change within each pair. The canary corpus is intentionally smaller and is not
+The tiny pilot and qualification use the same architecture and recipe. The
+small pair does likewise. Only the token budget, batch, and observation cadence
+change between sizes. The canary corpus is intentionally smaller and is not
 evidence for the quality of the four-corpus recipe.
 
 ## Run procedure
@@ -122,42 +125,47 @@ twice or the answer makes no progress across successive sentences.
   artifact-integrity tolerance.
 - All 15 prompts produce non-empty output. No knowledge score is required.
 
-### Gate 1: small pilot
+Observed result: `foundation-canary-02` run `100f0082a33af66f` completed all
+306 steps on two H200 GPUs. Held-out loss fell from 10.8531 to 6.2503, and the
+selected, master, and reloaded-artifact losses agreed at 6.2503. Deterministic
+generation was non-empty but collapsed into repeated phrases and bullets. At
+only 0.31 tokens per parameter, this is a systems pass and a capability fail by
+design; it must not be used to judge the corpus recipe.
+
+### Gate 1: tiny pilot
 
 - Gate 0 still passes.
-- Fixed-prompt score is at least **15/30**.
-- At least **12/15** responses avoid repetition failure.
+- Fixed-prompt score is at least **8/30**.
+- At least **8/15** responses avoid repetition failure.
 - The later checkpoints improve both held-out loss and prompt score over the
   early checkpoint. If loss improves while prompt score degrades, stop.
 
-### Gate 2: small qualification
+### Gate 2: tiny qualification
+
+- Fixed-prompt score is at least **18/30**.
+- At least 7 of the 10 factual prompts score at least 1.
+- At least **13/15** responses avoid repetition failure.
+- The selected checkpoint beats the tiny pilot; continued training has not
+  crossed a visible capability peak.
+- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
+  at least 16/30 and avoid broad repetition collapse before scaling the model.
+
+### Gate 3: small pilot
+
+- Fixed-prompt score is at least **12/30**.
+- At least **11/15** responses avoid repetition failure.
+- Loss and prompt score improve together across checkpoints.
+- This underexposed pilot is not required to beat the qualified tiny model.
+
+### Gate 4: small qualification
 
 - Fixed-prompt score is at least **22/30**.
 - Every factual prompt scores at least 1.
 - No response has a repetition failure.
-- The selected checkpoint beats the small pilot; continued training has not
-  crossed a visible capability peak.
 - Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
-  at least 20/30 and avoid repetition collapse before scaling the model.
-
-### Gate 3: medium pilot
-
-- Fixed-prompt score is at least **22/30**, with no repetition failure.
-- It matches the small qualification after half as many training tokens, or
-  shows a clear checkpoint trend likely to exceed it at the full budget.
-- No more than two individual prompts regress relative to the qualified small
-  model.
-
-### Gate 4: medium qualification
-
-- Fixed-prompt score is at least **27/30**.
-- At least 9 of the 10 factual prompts score 2; every factual prompt scores at
-  least 1.
-- No response has a repetition failure.
-- Repeat the qualifying recipe with seeds 43 and 44. All three runs must score
-  at least 25/30 and pass artifact integrity.
-- Only after this gate passes may a separate conversational-tuning ladder be
-  designed. Foundation prompts remain permanent regression tests.
+  at least 20/30 and pass artifact integrity.
+- Only after this gate passes may a separate medium foundation ladder be
+  designed. These prompts remain permanent regression tests.
 
 ## Questions to answer at every rung
 
