@@ -1,4 +1,6 @@
 # Gate 0: prove the complete foundation-training path with minimal spend.
+# PressBooks is one assessed shard (about 181 MB and 126M reference tokens),
+# so this gate does not materialize the full qualification corpus mixture.
 # This is a private research compose; distribution_policy is intentionally unset.
 kind: waldo-model-compose
 schema: 1
@@ -29,13 +31,7 @@ stages:
         repetitive_content: true
         boilerplate_content: true
     corpora:
-      - path: core/common-pile/wikimedia
-        weight: 5
-      - path: core/books/doab
-        weight: 2
-      - path: science/plos
-        weight: 2
-      - path: core/books/gutenberg
+      - path: core/common-pile/pressbooks
         weight: 1
     parameters:
       profile: causal-pretrain-weighted

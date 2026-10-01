@@ -14,10 +14,11 @@ raw deterministic generation already invented a political biography for
 content-poor answers. This proves that loss, successful execution, and more
 tokens are not sufficient promotion criteria.
 
-The new ladder isolates foundation learning. It uses one fixed, prose-heavy
-mixture, two model sizes, short pilots before full runs, float32 portable
-parameters, eager execution, and deterministic checkpoint evaluation. No
-conversation or instruction data enters this ladder.
+The new ladder isolates foundation learning. Gate 0 uses one small, assessed
+PressBooks shard so the systems canary stays cheap. Gates 1-4 use one fixed,
+prose-heavy mixture across two model sizes, with short pilots before full runs,
+float32 portable parameters, eager execution, and deterministic checkpoint
+evaluation. No conversation or instruction data enters this ladder.
 
 ## Rules
 
@@ -41,7 +42,7 @@ change only `seed`; do not silently edit the numbered reference compose.
 
 | Rung | Suggested model name | Approximate size | Token request | Question answered |
 | --- | --- | ---: | ---: | --- |
-| `0000-foundation-canary.yaml` | `foundation-canary-01` | 16M | 5M | Does the complete pipeline work? |
+| `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | Does the complete pipeline work using one assessed shard? |
 | `0001-foundation-small-pilot.yaml` | `foundation-small-pilot-01` | 76M | 50M | Does this recipe begin learning coherent language cheaply? |
 | `0002-foundation-small.yaml` | `foundation-small-01` | 76M | 600M | Can the small model meet a real capability floor? |
 | `0003-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 300M | Does scaling the architecture improve the fixed evaluation? |
@@ -49,7 +50,8 @@ change only `seed`; do not silently edit the numbered reference compose.
 
 The small pilot and qualification use the same architecture and recipe. The
 medium pair does likewise. Only the token budget and observation cadence
-change within each pair.
+change within each pair. The canary corpus is intentionally smaller and is not
+evidence for the quality of the four-corpus recipe.
 
 ## Run procedure
 
@@ -57,14 +59,14 @@ For each rung:
 
 ```console
 waldo model forecast composes/0000-foundation-canary.yaml
-waldo model train foundation-canary-01 composes/0000-foundation-canary.yaml
+waldo model train foundation-canary-02 composes/0000-foundation-canary.yaml
 ```
 
 Record every completed run ID. Test a specific artifact rather than whatever
 run happens to be selected by the model name:
 
 ```console
-waldo model chat foundation-canary-01 \
+waldo model chat foundation-canary-02 \
   --run-id RUN_ID --raw --temperature 0 --max-tokens 80 \
   "The Linux kernel is"
 ```
@@ -113,6 +115,8 @@ twice or the answer makes no progress across successive sentences.
 
 - Training, evaluation, checkpointing, resume, publication, and inference all
   complete without non-finite values.
+- Materialization resolves one assessed shard (about 181 MB), not the full
+  multi-corpus dataset.
 - Token accounting is exact and held-out loss moves downward.
 - The selected checkpoint and published artifact agree within the existing
   artifact-integrity tolerance.

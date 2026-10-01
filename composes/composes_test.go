@@ -113,13 +113,13 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 }
 
 func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
-	wantCorpora := []string{
+	qualificationCorpora := []string{
 		"core/common-pile/wikimedia",
 		"core/books/doab",
 		"science/plos",
 		"core/books/gutenberg",
 	}
-	wantWeights := []uint64{5, 2, 2, 1}
+	qualificationWeights := []uint64{5, 2, 2, 1}
 	for _, file := range foundationFiles {
 		compose := loadCompose(t, file)
 		if compose.Base != nil || compose.Interaction.Template != "" || len(compose.Stages) != 1 {
@@ -135,6 +135,12 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		}
 		if stage.Filter == nil || stage.Filter.MainContent == nil || !*stage.Filter.MainContent || stage.Filter.Exclude == nil || stage.Filter.Exclude.RepetitiveContent == nil || !*stage.Filter.Exclude.RepetitiveContent || stage.Filter.Exclude.BoilerplateContent == nil || !*stage.Filter.Exclude.BoilerplateContent {
 			t.Fatalf("%s quality filter = %+v", file, stage.Filter)
+		}
+		wantCorpora := qualificationCorpora
+		wantWeights := qualificationWeights
+		if file == foundationFiles[0] {
+			wantCorpora = []string{"core/common-pile/pressbooks"}
+			wantWeights = []uint64{1}
 		}
 		if got := corpusPaths(stage.Corpora); !reflect.DeepEqual(got, wantCorpora) {
 			t.Fatalf("%s corpora = %v, want %v", file, got, wantCorpora)
