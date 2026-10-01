@@ -613,19 +613,20 @@ func TestTrainingRendezvousReachability(t *testing.T) {
 
 func TestHostfileWorkerArgumentsCarryNCCLSettings(t *testing.T) {
 	session := hostfileSession{
-		remoteBinary:  "/tmp/waldo-launch/build/waldo",
-		remoteRoot:    "/tmp/waldo-launch/build",
-		cacheRoot:     "/home/gmk/.waldo/cache",
-		cacheScratch:  "/home/gmk/.waldo/scratch",
-		cacheMaxBytes: 20 << 30,
-		cacheMirrors:  []string{"https://mirror.example/lookaside/v1"},
+		remoteBinary:         "/tmp/waldo-launch/build/waldo",
+		remoteRoot:           "/tmp/waldo-launch/build",
+		cacheRoot:            "/home/gmk/.waldo/cache",
+		cacheScratch:         "/home/gmk/.waldo/scratch",
+		cacheMaxBytes:        20 << 30,
+		cacheRetainCompleted: true,
+		cacheMirrors:         []string{"https://mirror.example/lookaside/v1"},
 		cluster: training.Cluster{
 			Nodes: 2, Rendezvous: "train-0:29500", RendezvousID: "session-test",
 			Interface: "ib0", HCA: "mlx5_0",
 		},
 	}
 	arguments := strings.Join(session.workerArguments(1, false), " ")
-	for _, expected := range []string{"--nccl-interface ib0", "--nccl-hca mlx5_0", "--cache-root /home/gmk/.waldo/cache", "--cache-scratch /home/gmk/.waldo/scratch", "--cache-max-bytes 21474836480", "--cache-mirror https://mirror.example/lookaside/v1"} {
+	for _, expected := range []string{"--nccl-interface ib0", "--nccl-hca mlx5_0", "--cache-root /home/gmk/.waldo/cache", "--cache-scratch /home/gmk/.waldo/scratch", "--cache-max-bytes 21474836480", "--cache-retain-completed", "--cache-mirror https://mirror.example/lookaside/v1"} {
 		if !strings.Contains(arguments, expected) {
 			t.Fatalf("worker arguments %q omit %q", arguments, expected)
 		}

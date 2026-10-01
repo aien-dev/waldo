@@ -100,6 +100,7 @@ func runModelTrainHostfile(commandContext Context, args []string, path string, s
 	cache, err := lookaside.NewCache(cacheRoot, nil,
 		lookaside.WithMirrors(configuration.Lookaside.Mirrors),
 		lookaside.WithPersistentStorage(scratchRoot, config.EffectiveCacheMaxBytes(configuration)),
+		lookaside.WithCompletedRetention(configuration.Lookaside.RetainCompleted),
 	)
 	if err != nil {
 		return fmt.Errorf("resolve multi-host node-local cache: %w", err)
@@ -294,28 +295,29 @@ type hostfileStageReady struct {
 }
 
 type hostfileSession struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
-	hostfile        trainingHostfile
-	cluster         training.Cluster
-	binary          string
-	binarySHA256    string
-	remoteBinary    string
-	remoteRoot      string
-	resumeRoot      string
-	resumeStaged    bool
-	pythonDir       string
-	cacheRoot       string
-	cacheScratch    string
-	cacheMaxBytes   int64
-	cacheMirrors    []string
-	workers         []*hostfileWorker
-	workersStarted  bool
-	output          io.Writer
-	outputTerminal  bool
-	remoteBarActive bool
-	outputMu        sync.Mutex
-	publishMu       sync.Mutex
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	hostfile             trainingHostfile
+	cluster              training.Cluster
+	binary               string
+	binarySHA256         string
+	remoteBinary         string
+	remoteRoot           string
+	resumeRoot           string
+	resumeStaged         bool
+	pythonDir            string
+	cacheRoot            string
+	cacheScratch         string
+	cacheMaxBytes        int64
+	cacheRetainCompleted bool
+	cacheMirrors         []string
+	workers              []*hostfileWorker
+	workersStarted       bool
+	output               io.Writer
+	outputTerminal       bool
+	remoteBarActive      bool
+	outputMu             sync.Mutex
+	publishMu            sync.Mutex
 }
 
 const hostfileWorkerExitGrace = 10 * time.Second
@@ -345,7 +347,8 @@ func startHostfileSession(ctx context.Context, hostfile trainingHostfile, cluste
 		binary: binary, binarySHA256: digest, remoteRoot: remoteRoot,
 		remoteBinary: remoteRoot + "/waldo",
 		resumeRoot:   filepath.Join(remoteRoot, "resume"),
-		cacheRoot:    cache.Root(), cacheScratch: cache.Scratch(), cacheMaxBytes: cache.MaxBytes(), cacheMirrors: cache.Mirrors(),
+		cacheRoot:    cache.Root(), cacheScratch: cache.Scratch(), cacheMaxBytes: cache.MaxBytes(),
+		cacheRetainCompleted: cache.RetainCompleted(), cacheMirrors: cache.Mirrors(),
 		output: output, outputTerminal: terminalWriter(output),
 	}
 	local, err := inspectHostfileTorchTitan(sessionContext)
@@ -550,6 +553,9 @@ func (session *hostfileSession) workerArguments(rank int, check bool) []string {
 		"--cache-scratch", session.cacheScratch,
 		"--cache-max-bytes", fmt.Sprintf("%d", session.cacheMaxBytes),
 	)
+	if session.cacheRetainCompleted {
+		arguments = append(arguments, "--cache-retain-completed")
+	}
 	for _, mirror := range session.cacheMirrors {
 		arguments = append(arguments, "--cache-mirror", mirror)
 	}

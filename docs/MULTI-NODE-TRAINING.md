@@ -311,6 +311,15 @@ enough free space for one checkpoint, especially when `/tmp` is small:
 waldo config set lookaside.scratch /home/me/.cache/waldo/scratch
 ```
 
+For repeated runs over the same corpus, rank 0 can retain completed lookaside
+objects and set a bound larger than the materialized selection. The hostfile
+launcher propagates both settings to secondary workers:
+
+```console
+waldo config set lookaside.cache.retain-completed true
+waldo config set lookaside.cache.max-size 30GiB
+```
+
 The configured path must be writable at the same absolute location on every
 host. WALDO transfers and verifies the files; shared storage is not required.
 

@@ -925,6 +925,7 @@ func launcherWorkerCache(commandContext Context) (*lookaside.Cache, error) {
 	cache, err := lookaside.NewCache(root, nil,
 		lookaside.WithMirrors(stringArrayOption(commandContext, "cache-mirror")),
 		lookaside.WithPersistentStorage(scratch, maxBytes),
+		lookaside.WithCompletedRetention(boolOption(commandContext, "cache-retain-completed")),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("configure launcher-managed node-local cache: %w", err)

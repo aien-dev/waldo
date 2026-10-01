@@ -64,6 +64,16 @@ one-time materialization cost of roughly 23.6 GiB; later rungs reuse that cache.
 
 ## Run procedure
 
+For this ladder, retain the 23.6 GiB assessed corpus selection between runs.
+On rank 0, configure a bound with headroom; hostfile launch propagates it to
+secondary workers:
+
+```console
+waldo config set lookaside.cache.retain-completed true
+waldo config set lookaside.cache.max-size 30GiB
+waldo lookaside cache status
+```
+
 For each rung:
 
 ```console

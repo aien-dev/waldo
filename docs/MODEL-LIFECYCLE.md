@@ -22,8 +22,18 @@ Defaults are `~/.waldo/models` and a user-scoped lookaside cache beneath the
 operating system's temporary directory. Verified objects remain available
 while an operation is active and across a failure or interruption. After a
 successful operation commits, WALDO removes every cache object that operation
-used. `lookaside.cache.max-size` bounds recovery objects left by incomplete
-operations; it is not a post-success retention target.
+used by default. Repeated experiments over the same large corpus can opt into
+reuse and set a sufficient LRU bound:
+
+```bash
+waldo config set lookaside.cache.retain-completed true
+waldo config set lookaside.cache.max-size 30GiB
+```
+
+With retention disabled, `lookaside.cache.max-size` bounds recovery objects
+left by incomplete operations. With retention enabled, it also bounds objects
+kept after successful commands. Set it above the complete reusable working set;
+the cache may temporarily exceed the bound while an operation is active.
 Multi-stage composes materialize only the stage about to run. A successful
 stage releases its objects before the next stage is materialized; a failed or
 interrupted stage retains its verified objects for retry. Operators can inspect
