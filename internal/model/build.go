@@ -45,12 +45,12 @@ type ProgressBar struct {
 	Complete bool   `json:"complete,omitempty"`
 }
 
-func capacityProgressBar(event training.CapacityProgress, passes string, complete bool) *ProgressBar {
+func capacityProgressBar(event training.CapacityProgress, complete bool) *ProgressBar {
 	return &ProgressBar{
 		Label:    "pack",
 		Current:  event.Sequences,
 		Total:    event.RequiredSequences,
-		Detail:   fmt.Sprintf("%d record visits; up to %d corpus %s", event.Records, event.Epochs, passes),
+		Detail:   fmt.Sprintf("%d cumulative record visits; corpus pass %d (%d completed)", event.Records, event.CurrentPass, event.CompletedPasses),
 		Complete: complete,
 	}
 }
@@ -310,27 +310,23 @@ func (builder Builder) Train(ctx context.Context, name string, prepared Prepared
 		clock := builder.clock()
 		var lastReport time.Time
 		partition, epochs, err = partition.WithMinimumEpochsForStepsProgress(ctx, resolvedParameters.Steps, func(event training.CapacityProgress) {
-			passes := "passes"
-			if event.Epochs == 1 {
-				passes = "pass"
-			}
-			if event.Records == 0 && !event.Complete {
+			if event.Records == 0 && event.CurrentPass == 1 && !event.Complete {
 				lastReport = clock()
-				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packing 0/%d required sequences; testing up to %d corpus %s", event.RequiredSequences, event.Epochs, passes), Bar: capacityProgressBar(event, passes, false)})
+				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packing 0/%d required sequences; scanning corpus pass 1", event.RequiredSequences), Bar: capacityProgressBar(event, false)})
 				return
 			}
 			if event.Complete {
-				if event.Sufficient {
-					builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packed all %d required sequences within %d corpus %s after %d record visits", event.RequiredSequences, event.Epochs, passes, event.Records), Bar: capacityProgressBar(event, passes, true)})
-				} else {
-					builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("%d corpus %s packed %d/%d required sequences after %d record visits; increasing the pass limit", event.Epochs, passes, event.Sequences, event.RequiredSequences, event.Records), Bar: capacityProgressBar(event, passes, true)})
-				}
+				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packed all %d required sequences in %d corpus passes after %d cumulative record visits", event.RequiredSequences, event.CurrentPass, event.Records), Bar: capacityProgressBar(event, true)})
+				return
+			}
+			if event.PassComplete {
+				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("completed corpus pass %d with %d/%d required sequences after %d cumulative record visits; continuing with pass %d", event.CompletedPasses, event.Sequences, event.RequiredSequences, event.Records, event.CurrentPass+1), Bar: capacityProgressBar(event, false)})
 				return
 			}
 			now := clock()
 			if lastReport.IsZero() || now.Sub(lastReport) >= 5*time.Second {
 				lastReport = now
-				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packing %d/%d required sequences after %d record visits; testing up to %d corpus %s", event.Sequences, event.RequiredSequences, event.Records, event.Epochs, passes), Bar: capacityProgressBar(event, passes, false)})
+				builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("packing %d/%d required sequences after %d cumulative record visits; scanning corpus pass %d (%d completed)", event.Sequences, event.RequiredSequences, event.Records, event.CurrentPass, event.CompletedPasses), Bar: capacityProgressBar(event, false)})
 			}
 		})
 		if err != nil {

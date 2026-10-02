@@ -633,12 +633,229 @@ func TestMinimumEpochsForStepsReportsCapacityProgress(t *testing.T) {
 	if epochs != 2 || len(events) < 4 {
 		t.Fatalf("epochs = %d, progress = %+v", epochs, events)
 	}
-	if events[0].Trial != 1 || events[0].Epochs != 1 || events[0].Records != 0 || events[0].RequiredSequences != parameters.Steps*parameters.BatchSize {
+	if events[0].CurrentPass != 1 || events[0].CompletedPasses != 0 || events[0].Records != 0 || events[0].RequiredSequences != parameters.Steps*parameters.BatchSize {
 		t.Fatalf("first progress = %+v", events[0])
 	}
 	last := events[len(events)-1]
-	if !last.Complete || !last.Sufficient || last.Epochs != 2 || last.Records == 0 || last.Sequences != last.RequiredSequences {
+	if !last.Complete || !last.Sufficient || last.CurrentPass != 2 || last.Records == 0 || last.Sequences != last.RequiredSequences {
 		t.Fatalf("final progress = %+v", last)
+	}
+}
+
+type trackedEpochSource struct {
+	records  []Record
+	calls    map[int64]int
+	visits   map[int64]int
+	errEpoch int64
+	err      error
+}
+
+func (source *trackedEpochSource) streamEpoch(ctx context.Context, epoch int64, consume func(Record) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if source.calls == nil {
+		source.calls = map[int64]int{}
+	}
+	if source.visits == nil {
+		source.visits = map[int64]int{}
+	}
+	source.calls[epoch]++
+	if source.err != nil && epoch == source.errEpoch {
+		return source.err
+	}
+	for _, record := range source.records {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		source.visits[epoch]++
+		if err := consume(record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func capacityTestMinimum(ctx context.Context, source epochRecordSource, sequenceLength, requested int64, progress func(CapacityProgress)) (int64, error) {
+	return minimumEpochsForSequences(ctx, source, byteCodec{}, "causal-language-modeling", ConversationTransform{}, int(sequenceLength), requested, requested, progress)
+}
+
+func TestMinimumEpochsIncrementalCapacityOnePass(t *testing.T) {
+	source := &trackedEpochSource{records: []Record{{Text: strings.Repeat("a", 8)}}}
+	epochs, err := capacityTestMinimum(context.Background(), source, 4, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epochs != 1 || source.calls[0] != 1 || source.visits[0] != 1 {
+		t.Fatalf("epochs = %d, calls = %v, visits = %v", epochs, source.calls, source.visits)
+	}
+}
+
+func TestMinimumEpochsIncrementalCapacityRequiresExactlySixPasses(t *testing.T) {
+	source := &trackedEpochSource{records: []Record{{Text: "abc"}}}
+	var events []CapacityProgress
+	epochs, err := capacityTestMinimum(context.Background(), source, 4, 6, func(event CapacityProgress) {
+		events = append(events, event)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epochs != 6 {
+		t.Fatalf("minimum epochs = %d, want 6", epochs)
+	}
+	for epoch := int64(0); epoch < 6; epoch++ {
+		if source.calls[epoch] != 1 || source.visits[epoch] != 1 {
+			t.Fatalf("epoch %d calls = %d, visits = %d; completed epochs must not be rescanned", epoch+1, source.calls[epoch], source.visits[epoch])
+		}
+	}
+	var fifthInsufficient, sixthSufficient bool
+	for index, event := range events {
+		if index > 0 && (event.Records < events[index-1].Records || event.Sequences < events[index-1].Sequences || event.CurrentPass < events[index-1].CurrentPass) {
+			t.Fatalf("non-monotonic progress at %d: previous=%+v current=%+v", index, events[index-1], event)
+		}
+		fifthInsufficient = fifthInsufficient || event.PassComplete && event.CompletedPasses == 5 && !event.Sufficient && event.Sequences == 5
+		sixthSufficient = sixthSufficient || event.Complete && event.CurrentPass == 6 && event.Sufficient && event.Sequences == 6
+	}
+	if !fifthInsufficient || !sixthSufficient {
+		t.Fatalf("progress did not prove insufficient fifth and sufficient sixth passes: %+v", events)
+	}
+}
+
+func TestMinimumEpochsPreservesContinuousPackingAcrossPasses(t *testing.T) {
+	// Each pass contributes two tokens including EOS. Continuous packing needs
+	// three passes to produce one full four-token sequence plus a final partial;
+	// flushing a partial at every pass would incorrectly choose two.
+	source := &trackedEpochSource{records: []Record{{Text: "a"}}}
+	epochs, err := capacityTestMinimum(context.Background(), source, 4, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epochs != 3 {
+		t.Fatalf("minimum epochs = %d, want 3", epochs)
+	}
+}
+
+type recordingEpochSource struct {
+	source epochRecordSource
+	counts map[int64]map[string]int
+}
+
+func (source *recordingEpochSource) streamEpoch(ctx context.Context, epoch int64, consume func(Record) error) error {
+	if source.counts == nil {
+		source.counts = map[int64]map[string]int{}
+	}
+	source.counts[epoch] = map[string]int{}
+	return source.source.streamEpoch(ctx, epoch, func(record Record) error {
+		source.counts[epoch][record.Corpus]++
+		return consume(record)
+	})
+}
+
+func TestMinimumEpochsPreservesWeightedEpochExhaustion(t *testing.T) {
+	first := writeTrainingShard(t, []string{"a1", "a2", "a3", "a4", "a5", "a6"})
+	first.Corpus = "corpus-a"
+	second := writeTrainingShard(t, []string{"b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "ba", "bb", "bc"})
+	second.Corpus = "corpus-b"
+	parameters, err := ResolveParameters(Parameters{Profile: WeightedProfile, Steps: 7, BatchSize: 1, SequenceLength: 8, LearningRate: 0.001, Seed: 42, CorpusWeights: map[string]uint64{"corpus-a": 3, "corpus-b": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partition, err := NewRecordPartition([]Input{first, second}, parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := NewCanonicalRecordSourceWithTokenizer(partition.inputs, partition.parameters, partition.codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordingEpochSource{source: value.(*canonicalRecordSource)}
+	epochs, err := minimumEpochsForSequences(context.Background(), recorder, partition.codec, partition.objective, partition.conversation, int(partition.parameters.SequenceLength), 7, 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if epochs < 2 {
+		t.Fatalf("minimum epochs = %d, want multiple weighted passes", epochs)
+	}
+	for epoch := int64(0); epoch < epochs-1; epoch++ {
+		if got := recorder.counts[epoch]; got["corpus-a"] != 6 || got["corpus-b"] != 2 {
+			t.Fatalf("weighted epoch %d counts = %v, want corpus-a:6 corpus-b:2", epoch+1, got)
+		}
+	}
+}
+
+func TestMinimumEpochsIncrementalCapacityIsDeterministic(t *testing.T) {
+	run := func() (int64, []CapacityProgress) {
+		source := &trackedEpochSource{records: []Record{{Text: "abc"}}}
+		var events []CapacityProgress
+		epochs, err := capacityTestMinimum(context.Background(), source, 4, 6, func(event CapacityProgress) {
+			events = append(events, event)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return epochs, events
+	}
+	firstEpochs, firstEvents := run()
+	secondEpochs, secondEvents := run()
+	if firstEpochs != secondEpochs || !reflect.DeepEqual(firstEvents, secondEvents) {
+		t.Fatalf("incremental capacity differs across runs: %d %+v / %d %+v", firstEpochs, firstEvents, secondEpochs, secondEvents)
+	}
+}
+
+func TestMinimumEpochsIncrementalCapacityPropagatesCancellationAndErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := capacityTestMinimum(ctx, &trackedEpochSource{records: []Record{{Text: "abc"}}}, 4, 2, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation error = %v, want context canceled", err)
+	}
+	sentinel := errors.New("stream failed")
+	if _, err := capacityTestMinimum(context.Background(), &trackedEpochSource{records: []Record{{Text: "abc"}}, err: sentinel, errEpoch: 1}, 4, 3, nil); !errors.Is(err, sentinel) {
+		t.Fatalf("stream error = %v, want sentinel", err)
+	}
+}
+
+func TestMinimumEpochsIncrementalCapacityMatchesFiniteStreamSemantics(t *testing.T) {
+	inputs := []Input{writeTrainingShard(t, []string{"alpha", "bravo bravo", "charlie", "delta delta delta"})}
+	parameters, err := ResolveParameters(Parameters{Tokens: 160, BatchSize: 2, SequenceLength: 8, LearningRate: 0.001, Seed: 19})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partition, err := NewRecordPartition(inputs, parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEpochs := int64(0)
+	for epochs := int64(1); epochs <= 20; epochs++ {
+		candidate := partition
+		candidate.parameters.Epochs = epochs
+		_, sufficient, err := candidate.TrainingStepCapacity(context.Background(), parameters.Steps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sufficient {
+			wantEpochs = epochs
+			break
+		}
+	}
+	resolved, gotEpochs, err := partition.WithMinimumEpochsForSteps(context.Background(), parameters.Steps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotEpochs != wantEpochs {
+		t.Fatalf("incremental epochs = %d, finite-stream reference = %d", gotEpochs, wantEpochs)
+	}
+	gotSequences, _, err := resolved.trainingSequenceCapacity(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference := partition
+	reference.parameters.Epochs = wantEpochs
+	wantSequences, _, err := reference.trainingSequenceCapacity(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotSequences != wantSequences {
+		t.Fatalf("incremental capacity = %d sequences, finite-stream reference = %d", gotSequences, wantSequences)
 	}
 }
 

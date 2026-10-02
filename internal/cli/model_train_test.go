@@ -112,9 +112,9 @@ func TestFormatModelProgressBar(t *testing.T) {
 		Label:   "pack",
 		Current: 25,
 		Total:   100,
-		Detail:  "200 record visits; up to 2 corpus passes",
+		Detail:  "200 cumulative record visits; corpus pass 2 (1 completed)",
 	})
-	for _, want := range []string{"pack", "25%", "25/100 sequences", "200 record visits", "up to 2 corpus passes"} {
+	for _, want := range []string{"pack", "25%", "25/100 sequences", "200 cumulative record visits", "corpus pass 2 (1 completed)"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("progress bar %q does not contain %q", got, want)
 		}

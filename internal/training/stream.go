@@ -264,11 +264,12 @@ type PartitionProgress struct {
 // CapacityProgress reports deterministic training-stream scans used to prove
 // that a token-budget stage can supply its requested optimizer steps.
 type CapacityProgress struct {
-	Trial             int
-	Epochs            int64
+	CurrentPass       int64
+	CompletedPasses   int64
 	Records           int64
 	Sequences         int64
 	RequiredSequences int64
+	PassComplete      bool
 	Complete          bool
 	Sufficient        bool
 }
@@ -707,65 +708,109 @@ func (partition RecordPartition) WithMinimumEpochsForSteps(ctx context.Context, 
 // WithMinimumEpochsForStepsProgress is WithMinimumEpochsForSteps with bounded
 // scan progress suitable for user-facing preflight status.
 func (partition RecordPartition) WithMinimumEpochsForStepsProgress(ctx context.Context, requested int64, progress func(CapacityProgress)) (RecordPartition, int64, error) {
-	if requested <= 0 {
-		return RecordPartition{}, 0, fmt.Errorf("requested steps must be positive")
+	if requested <= 0 || partition.parameters.BatchSize <= 0 || partition.parameters.SequenceLength <= 0 {
+		return RecordPartition{}, 0, fmt.Errorf("requested steps, batch size, and sequence length must be positive")
 	}
 	requiredSequences, overflow := multiplyInt64(requested, partition.parameters.BatchSize)
 	if overflow {
 		return RecordPartition{}, 0, fmt.Errorf("requested training sequence count overflows int64")
 	}
+	source, err := partition.capacityEpochSource()
+	if err != nil {
+		return RecordPartition{}, 0, err
+	}
+	epochs, err := minimumEpochsForSequences(ctx, source, partition.codec, partition.objective, partition.conversation, int(partition.parameters.SequenceLength), requested, requiredSequences, progress)
+	if err != nil {
+		return RecordPartition{}, 0, err
+	}
+	partition.parameters.Epochs = epochs
+	return partition, epochs, nil
+}
+
+func minimumEpochsForSequences(ctx context.Context, source epochRecordSource, codec TokenCodec, objective string, conversation ConversationTransform, sequenceLength int, requested, requiredSequences int64, progress func(CapacityProgress)) (int64, error) {
 	const maximumEpochs = int64(1_000_000)
-	trial := 0
-	capacityAt := func(epochs int64) (int64, bool, error) {
-		trial++
-		partition.parameters.Epochs = epochs
+	packer := sequenceCapacityPacker{sequenceLength: sequenceLength}
+	var records, reportedSequences int64
+	report := func(event CapacityProgress) {
 		if progress != nil {
-			progress(CapacityProgress{Trial: trial, Epochs: epochs, RequiredSequences: requiredSequences})
-		}
-		var records, sequences int64
-		available, sufficient, err := partition.trainingStepCapacityWithProgress(ctx, requested, func(scanned, produced int64) {
-			records, sequences = scanned, produced
-			if progress != nil {
-				progress(CapacityProgress{Trial: trial, Epochs: epochs, Records: records, Sequences: sequences, RequiredSequences: requiredSequences})
+			if event.Sequences < reportedSequences {
+				event.Sequences = reportedSequences
+			} else {
+				reportedSequences = event.Sequences
 			}
+			progress(event)
+		}
+	}
+	reached := errors.New("requested training step capacity reached")
+	for epoch := int64(0); epoch < maximumEpochs; epoch++ {
+		currentPass := epoch + 1
+		report(CapacityProgress{CurrentPass: currentPass, CompletedPasses: epoch, Records: records, Sequences: packer.sequences, RequiredSequences: requiredSequences})
+		var epochTargets bool
+		err := source.streamEpoch(ctx, epoch, func(record Record) error {
+			records++
+			tokens, mask, err := tokenizeRecord(record, codec, objective, conversation)
+			if err != nil {
+				return err
+			}
+			epochTargets = epochTargets || slices.Contains(mask, true)
+			if packer.add(tokens, mask, requiredSequences) {
+				return reached
+			}
+			if records == 1 || records%10_000 == 0 {
+				report(CapacityProgress{CurrentPass: currentPass, CompletedPasses: epoch, Records: records, Sequences: packer.sequences, RequiredSequences: requiredSequences})
+			}
+			return nil
 		})
-		if progress != nil && err == nil {
-			progress(CapacityProgress{Trial: trial, Epochs: epochs, Records: records, Sequences: sequences, RequiredSequences: requiredSequences, Complete: true, Sufficient: sufficient})
+		if errors.Is(err, reached) {
+			report(CapacityProgress{CurrentPass: currentPass, CompletedPasses: epoch, Records: records, Sequences: requiredSequences, RequiredSequences: requiredSequences, Complete: true, Sufficient: true})
+			return currentPass, nil
 		}
-		return available, sufficient, err
-	}
-	low, high := int64(0), max(int64(1), partition.parameters.Epochs)
-	for {
-		available, sufficient, err := capacityAt(high)
 		if err != nil {
-			return RecordPartition{}, 0, err
+			return 0, err
 		}
-		if sufficient {
-			break
+		if !epochTargets {
+			return 0, fmt.Errorf("training stream contains no usable optimizer steps")
 		}
-		if available == 0 {
-			return RecordPartition{}, 0, fmt.Errorf("training stream contains no usable optimizer steps")
+		testedSequences := packer.terminalSequences()
+		if testedSequences >= requiredSequences {
+			report(CapacityProgress{CurrentPass: currentPass, CompletedPasses: currentPass, Records: records, Sequences: requiredSequences, RequiredSequences: requiredSequences, PassComplete: true, Complete: true, Sufficient: true})
+			return currentPass, nil
 		}
-		low = high
-		if high == maximumEpochs {
-			return RecordPartition{}, 0, fmt.Errorf("training stream cannot supply %d optimizer steps within %d epochs", requested, maximumEpochs)
-		}
-		high = min(maximumEpochs, high*2)
+		report(CapacityProgress{CurrentPass: currentPass, CompletedPasses: currentPass, Records: records, Sequences: testedSequences, RequiredSequences: requiredSequences, PassComplete: true})
 	}
-	for low+1 < high {
-		middle := low + (high-low)/2
-		_, sufficient, err := capacityAt(middle)
-		if err != nil {
-			return RecordPartition{}, 0, err
+	return 0, fmt.Errorf("training stream cannot supply %d optimizer steps within %d epochs", requested, maximumEpochs)
+}
+
+type epochRecordSource interface {
+	streamEpoch(context.Context, int64, func(Record) error) error
+}
+
+type filteredEpochRecordSource struct {
+	source  epochRecordSource
+	include func(Record) bool
+}
+
+func (source filteredEpochRecordSource) streamEpoch(ctx context.Context, epoch int64, consume func(Record) error) error {
+	return source.source.streamEpoch(ctx, epoch, func(record Record) error {
+		if !source.include(record) {
+			return nil
 		}
-		if sufficient {
-			high = middle
-		} else {
-			low = middle
-		}
+		return consume(record)
+	})
+}
+
+func (partition RecordPartition) capacityEpochSource() (epochRecordSource, error) {
+	value, err := NewCanonicalRecordSourceWithTokenizer(partition.inputs, partition.parameters, partition.codec)
+	if err != nil {
+		return nil, err
 	}
-	partition.parameters.Epochs = high
-	return partition, high, nil
+	source, ok := value.(*canonicalRecordSource)
+	if !ok {
+		return nil, fmt.Errorf("canonical record source does not support incremental epoch scans")
+	}
+	return filteredEpochRecordSource{source: source, include: func(record Record) bool {
+		return !partition.selected[record.SelectionID]
+	}}, nil
 }
 
 // TrainingSteps scans the finite epoch stream and returns its exact optimizer
@@ -794,62 +839,71 @@ func (partition RecordPartition) trainingSequenceCapacityWithProgress(ctx contex
 	if err != nil {
 		return 0, false, err
 	}
-	var buffered int
-	var masks []bool
-	var records, sequences int64
+	packer := sequenceCapacityPacker{sequenceLength: int(partition.parameters.SequenceLength)}
+	var records int64
 	reached := errors.New("requested training step capacity reached")
-	addSequence := func(targets []bool) error {
-		if slices.Contains(targets, true) {
-			sequences++
-			if requiredSequences > 0 && sequences >= requiredSequences {
-				return reached
-			}
-		}
-		return nil
-	}
 	err = source.Stream(ctx, func(record Record) error {
 		records++
 		tokens, recordMask, err := tokenizeRecord(record, partition.codec, partition.objective, partition.conversation)
 		if err != nil {
 			return err
 		}
-		recordTokens := len(tokens) + 1 // Worker framing appends EOS.
-		buffered += recordTokens
-		masks = append(masks, recordMask...)
-		window := int(partition.parameters.SequenceLength) + 1
-		for buffered >= window {
-			if err := addSequence(masks[1:window]); err != nil {
-				return err
-			}
-			buffered -= int(partition.parameters.SequenceLength)
-			masks = masks[int(partition.parameters.SequenceLength):]
+		if packer.add(tokens, recordMask, requiredSequences) {
+			return reached
 		}
 		if progress != nil && (records == 1 || records%10_000 == 0) {
-			progress(records, sequences)
+			progress(records, packer.sequences)
 		}
 		return nil
 	})
 	if errors.Is(err, reached) {
 		if progress != nil {
-			progress(records, sequences)
+			progress(records, packer.sequences)
 		}
-		return sequences, true, nil
+		return packer.sequences, true, nil
 	}
 	if err != nil {
 		return 0, false, err
 	}
-	if buffered > 1 {
-		if err := addSequence(masks[1:]); errors.Is(err, reached) {
-			if progress != nil {
-				progress(records, sequences)
-			}
-			return sequences, true, nil
-		}
-	}
+	sequences := packer.terminalSequences()
 	if progress != nil {
 		progress(records, sequences)
 	}
-	return sequences, false, nil
+	return sequences, requiredSequences > 0 && sequences >= requiredSequences, nil
+}
+
+type sequenceCapacityPacker struct {
+	sequenceLength int
+	buffered       int
+	masks          []bool
+	sequences      int64
+}
+
+// add preserves the worker's continuous-EOS packing window. It reports
+// whether at least one supervised sequence was completed by this record.
+func (packer *sequenceCapacityPacker) add(tokens []int, mask []bool, requiredSequences int64) bool {
+	packer.buffered += len(tokens) + 1 // Worker framing appends EOS.
+	packer.masks = append(packer.masks, mask...)
+	window := packer.sequenceLength + 1
+	for packer.buffered >= window {
+		if slices.Contains(packer.masks[1:window], true) {
+			packer.sequences++
+			if requiredSequences > 0 && packer.sequences >= requiredSequences {
+				return true
+			}
+		}
+		packer.buffered -= packer.sequenceLength
+		packer.masks = packer.masks[packer.sequenceLength:]
+	}
+	return false
+}
+
+func (packer *sequenceCapacityPacker) terminalSequences() int64 {
+	sequences := packer.sequences
+	if packer.buffered > 1 && slices.Contains(packer.masks[1:], true) {
+		sequences++
+	}
+	return sequences
 }
 
 type filteredRecordSource struct {
