@@ -6,24 +6,28 @@
 package composes_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/openwaldo/waldo/internal/corpus"
 	"github.com/openwaldo/waldo/internal/model"
+	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 	"github.com/openwaldo/waldo/internal/training"
 )
 
 var foundationFiles = []string{
-	"0000-foundation-canary.yaml",
-	"0001-foundation-mixture-canary.yaml",
-	"0002-foundation-small-pilot.yaml",
-	"0003-foundation-small.yaml",
-	"0004-foundation-medium-pilot.yaml",
-	"0005-foundation-medium.yaml",
+	"0001-foundation-pipeline-canary.yaml.tmpl",
+	"0002-foundation-mixture-canary.yaml.tmpl",
+	"0003-foundation-small-language.yaml.tmpl",
+	"0004-foundation-small-general.yaml.tmpl",
+	"0005-foundation-medium-pilot.yaml.tmpl",
+	"0006-foundation-medium.yaml.tmpl",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -48,7 +52,7 @@ func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
 }
 
 func TestEveryReferenceComposeSettingResolvesIntoTrainingContract(t *testing.T) {
-	files, err := filepath.Glob("*.yaml")
+	files, err := filepath.Glob("*.yaml.tmpl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +89,7 @@ func TestEveryReferenceComposeSettingResolvesIntoTrainingContract(t *testing.T) 
 }
 
 func TestFoundationLadderFilesAndForecasts(t *testing.T) {
-	files, err := filepath.Glob("*.yaml")
+	files, err := filepath.Glob("*.yaml.tmpl")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,12 +100,12 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		parameters uint64
 		tokens     int64
 	}{
-		{16014336, 5013504},
-		{16014336, 50003968},
-		{76416000, 760020992},
-		{76416000, 1500053504},
-		{336637440, 3400007680},
-		{336637440, 6700007424},
+		{7244032, 10010624},
+		{7244032, 50003968},
+		{76615040, 760020992},
+		{76615040, 1500053504},
+		{297171072, 3000107008},
+		{297171072, 6000082944},
 	}
 	for index, file := range foundationFiles {
 		forecast, err := model.ForecastCompose(loadCompose(t, file))
@@ -115,19 +119,19 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 }
 
 func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
-	qualificationCorpora := []string{
+	generalCorpora := []string{
 		"core/common-pile/wikimedia",
 		"core/common-pile/pressbooks",
 		"science/plos",
 	}
-	qualificationWeights := []uint64{5, 2, 1}
+	generalWeights := []uint64{5, 2, 1}
 	for _, file := range foundationFiles {
 		compose := loadCompose(t, file)
 		if compose.Base != nil || compose.Interaction.Template != "" || len(compose.Stages) != 1 {
 			t.Fatalf("%s is not a fresh, foundation-only compose", file)
 		}
 		architecture := compose.Architecture
-		if architecture.Tokenizer.Name != "tiktoken/r50k_base" || architecture.Tokenizer.Revision != "tiktoken-r50k-base" || architecture.VocabularySize != 50259 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
+		if architecture.Tokenizer.Name != waldotokenizer.TrainedName || architecture.Tokenizer.Artifact == nil || architecture.VocabularySize != 16000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
 			t.Fatalf("%s architecture controls = %+v", file, architecture)
 		}
 		stage := compose.Stages[0]
@@ -137,11 +141,14 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		if stage.Filter == nil || stage.Filter.MainContent == nil || !*stage.Filter.MainContent || stage.Filter.Exclude == nil || stage.Filter.Exclude.RepetitiveContent == nil || !*stage.Filter.Exclude.RepetitiveContent || stage.Filter.Exclude.BoilerplateContent == nil || !*stage.Filter.Exclude.BoilerplateContent {
 			t.Fatalf("%s quality filter = %+v", file, stage.Filter)
 		}
-		wantCorpora := qualificationCorpora
-		wantWeights := qualificationWeights
+		wantCorpora := generalCorpora
+		wantWeights := generalWeights
 		if file == foundationFiles[0] {
 			wantCorpora = []string{"core/common-pile/pressbooks"}
 			wantWeights = []uint64{1}
+		} else if file == foundationFiles[2] {
+			wantCorpora = []string{"core/common-pile/wikimedia", "core/common-pile/pressbooks"}
+			wantWeights = []uint64{1, 1}
 		}
 		if got := corpusPaths(stage.Corpora); !reflect.DeepEqual(got, wantCorpora) {
 			t.Fatalf("%s corpora = %v, want %v", file, got, wantCorpora)
@@ -155,7 +162,7 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		if parameters.Profile != "causal-pretrain-weighted" || parameters.Parallelism != training.ParallelismAuto || parameters.ComputePrecision != "bfloat16" || parameters.Compile || parameters.Optimizer != "adamw" || parameters.Schedule != "warmup-stable-warmdown" || parameters.DistributionPolicy != "" || parameters.Seed != 42 {
 			t.Fatalf("%s execution controls = %+v", file, parameters)
 		}
-		if file != foundationFiles[0] && file != foundationFiles[1] {
+		if index := slicesIndex(foundationFiles, file); index >= 2 {
 			forecast, err := architecture.Forecast()
 			if err != nil {
 				t.Fatal(err)
@@ -169,18 +176,18 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 }
 
 func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
-	smallPilot := loadCompose(t, foundationFiles[4])
-	small := loadCompose(t, foundationFiles[5])
-	firstPilot := loadCompose(t, foundationFiles[2])
-	first := loadCompose(t, foundationFiles[3])
-	if firstPilot.Architecture != first.Architecture {
+	mediumPilot := loadCompose(t, foundationFiles[4])
+	medium := loadCompose(t, foundationFiles[5])
+	smallLanguage := loadCompose(t, foundationFiles[2])
+	smallGeneral := loadCompose(t, foundationFiles[3])
+	if !reflect.DeepEqual(smallLanguage.Architecture, smallGeneral.Architecture) {
 		t.Fatal("small pilot and qualification architectures differ")
 	}
-	if smallPilot.Architecture != small.Architecture {
+	if !reflect.DeepEqual(mediumPilot.Architecture, medium.Architecture) {
 		t.Fatal("medium pilot and qualification architectures differ")
 	}
-	if !reflect.DeepEqual(firstPilot.Stages[0].Corpora, first.Stages[0].Corpora) || !reflect.DeepEqual(smallPilot.Stages[0].Corpora, small.Stages[0].Corpora) {
-		t.Fatal("pilot and qualification corpus recipes differ")
+	if !reflect.DeepEqual(mediumPilot.Stages[0].Corpora, medium.Stages[0].Corpora) {
+		t.Fatal("medium pilot and qualification corpus recipes differ")
 	}
 }
 
@@ -197,7 +204,7 @@ func TestFoundationREADMEDefinesEvaluationContract(t *testing.T) {
 		"Once upon a time",
 		"Promotion gates",
 		"seed 43",
-		"Do not add conversational tuning",
+		"conversation tuning",
 	) {
 		if !strings.Contains(text, required) {
 			t.Errorf("README does not contain %q", required)
@@ -232,11 +239,75 @@ func TestToolUseComposeHasSizedBaseAndStructuredToolStage(t *testing.T) {
 
 func loadCompose(t *testing.T, path string) model.Compose {
 	t.Helper()
-	compose, _, err := model.LoadCompose(path)
+	if !strings.HasSuffix(path, ".tmpl") {
+		compose, _, err := model.LoadCompose(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return compose
+	}
+	document, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(directory, "tokenizers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(referenceTokenizer(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "tokenizers", "foundation-16k.json"), encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolvedPath := filepath.Join(directory, filepath.Base(path))
+	if err := os.WriteFile(resolvedPath, document, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	compose, _, err := model.LoadCompose(resolvedPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return compose
+}
+
+var (
+	referenceTokenizerOnce sync.Once
+	referenceArtifact      waldotokenizer.Artifact
+	referenceArtifactErr   error
+)
+
+func referenceTokenizer(t *testing.T) waldotokenizer.Artifact {
+	t.Helper()
+	referenceTokenizerOnce.Do(func() {
+		var sample strings.Builder
+		for index := 0; index < 16000; index++ {
+			fmt.Fprintf(&sample, "piece%05d.", index)
+		}
+		referenceArtifact, referenceArtifactErr = waldotokenizer.TrainBytepiece(
+			[]waldotokenizer.Sample{{ID: "reference", Text: sample.String()}},
+			16000,
+			int64(sample.Len()),
+			strings.Repeat("a", 64),
+		)
+	})
+	if referenceArtifactErr != nil {
+		t.Fatal(referenceArtifactErr)
+	}
+	if referenceArtifact.VocabularySize != 16000 {
+		t.Fatalf("reference tokenizer vocabulary = %d", referenceArtifact.VocabularySize)
+	}
+	return referenceArtifact
+}
+
+func slicesIndex(values []string, value string) int {
+	for index, candidate := range values {
+		if candidate == value {
+			return index
+		}
+	}
+	return -1
 }
 
 func corpusPaths(selections []model.CorpusSelection) []string {

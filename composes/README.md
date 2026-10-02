@@ -1,115 +1,103 @@
 # Foundation model ladder
 
-This directory is a stop/go experiment, not a queue of models to run. Train
-one rung, record its evidence, and continue only after it passes every gate.
-The failed `conversation6` ladder is preserved unchanged in
-[`archive/2026-09-conversation6`](archive/2026-09-conversation6/).
+This is a stop/go experiment. Run one gate, preserve its evidence, and advance
+only when it passes. The previous r50k ladder is preserved in
+[`archive/2026-10-r50k-ladder-retired`](archive/2026-10-r50k-ladder-retired/README.md).
 
-## Why we restarted
+## What changed
 
-`conversation6` did not first fail during conversation tuning. Its 12B-token
-foundation checkpoint completed cleanly and had plausible held-out loss, but
-raw deterministic generation already invented a political biography for
-`Linux is`. Later tuning merely changed that failure into repetitive,
-content-poor answers. This proves that loss, successful execution, and more
-tokens are not sufficient promotion criteria.
+The old 76.4M model trained correctly and reached held-out loss 3.2127, but its
+generations still collapsed. Its 50,259-token embedding table consumed 32.2M
+parameters (42.1%), leaving only about 44.2M for transformer blocks. More loss
+reduction on that design was not evidence that it would become useful.
 
-The new ladder isolates foundation learning. Gate 0 uses one small, assessed
-PressBooks shard so the systems canary stays cheap. The failed 16M capability
-experiment is preserved in
-[`archive/2026-10-tiny-r50k-failure`](archive/2026-10-tiny-r50k-failure/README.md).
-The failed 76M mixture experiment is preserved in
-[`archive/2026-10-small-mixture-failure`](archive/2026-10-small-mixture-failure/README.md).
-Gate 1 validates the corrected data mixture cheaply. Gates 2-5 use that fixed
-mixture across 76M and 337M architectures. Each size gets a
-10-token-per-parameter pilot before a run near 20. Parameters remain float32
-and execution remains eager. No conversation or instruction data enters this
-ladder.
+The new ladder separates four questions:
 
-The qualification mixture contains only assessed schema-2 Wikimedia, PLOS,
-and PressBooks shards. DOAB and Gutenberg remain excluded until they are
-re-ingested with content assessments; otherwise the declared repetition and
-boilerplate filters are silently unavailable for those records.
+1. Is the tokenizer compact, deterministic, and portable?
+2. Do training, publication, inference, and weighted sampling remain correct?
+3. Can a ~76M diagnostic model acquire non-repetitive language?
+4. Can a ~297M model meet basic general-foundation capability gates?
 
-## Rules
+There is no conversation tuning in this ladder. A small-model failure stops the
+experiment; it is not repaired with instruction data.
 
-1. Use a fresh model name for every run. Never append a changed recipe to an
-   existing model.
-2. Run only the next unqualified rung. A failure stops the ladder.
-3. Evaluate the selected artifact and intermediate checkpoints, not merely the
-   final model name.
-4. Use temperature zero and the exact prompts below. Do not tune the questions
-   after seeing an answer.
-5. Preserve the compose, run summary, run IDs, scores, loss history, and sample
-   output for every decision.
-6. Change one experimental variable at a time after a failure. Repeat the
-   failed rung; do not advance.
-7. For every capability rung, tied token embeddings must consume no more than
-   50% of total parameters. Report the allocation explicitly.
-8. Do not add conversational tuning until `0005-foundation-medium.yaml`
-   qualifies.
+## Gate 0: train and review the tokenizer
 
-For seed repeats, copy the qualifying compose into the saved run evidence and
-change only `seed`; do not silently edit the numbered reference compose.
+Pull the commit containing this ladder, then run on rank 0:
+
+```console
+mkdir -p composes/tokenizers
+go run ./cmd/waldo/ model train-tokenizer \
+  core/common-pile/wikimedia \
+  core/common-pile/pressbooks \
+  science/plos \
+  --vocabulary-size 16000 \
+  --sample-bytes 268435456 \
+  --output composes/tokenizers/foundation-16k.json
+```
+
+The command samples the three corpus paths evenly, regardless of their later
+training weights. Stop if it does not produce exactly 16,000 tokens, if the
+artifact fails validation, or if its reported bytes/token is more than 10%
+worse than r50k on the same sample. Preserve the complete output. Once accepted,
+commit `composes/tokenizers/foundation-16k.json`; it is part of the model.
+
+The compose files use `.yaml.tmpl` only because the content-addressed tokenizer
+does not exist in Git yet. They are directly runnable after Gate 0; no rendering
+or substitution is required.
 
 ## Rungs
 
-| Rung | Suggested model name | Size | Tokens | Tokens/parameter | Question answered |
-| --- | --- | ---: | ---: | ---: | --- |
-| `0000-foundation-canary.yaml` | `foundation-canary-02` | 16M | 5M | 0.31 | Does the complete pipeline work using one assessed shard? |
-| `0001-foundation-mixture-canary.yaml` | `foundation-mixture-canary-01` | 16M | 50M | 3.12 | Does the corrected weighted stream report the declared 5:2:1 exposure? |
-| `0002-foundation-small-pilot.yaml` | `foundation-small-pilot-02` | 76M | 760M | 9.95 | Does the first balanced architecture learn recognizable language? |
-| `0003-foundation-small.yaml` | `foundation-small-02` | 76M | 1.5B | 19.63 | Does the small model reach honest babbling competence? |
-| `0004-foundation-medium-pilot.yaml` | `foundation-medium-pilot-01` | 337M | 3.4B | 10.10 | Does the medium model begin producing locally coherent text? |
-| `0005-foundation-medium.yaml` | `foundation-medium-01` | 337M | 6.7B | 19.90 | Is the foundation coherent enough to consider later tuning? |
+| Gate | Compose | Approx. size | Tokens | Purpose |
+| --- | --- | ---: | ---: | --- |
+| 1 | `0001-foundation-pipeline-canary.yaml.tmpl` | 7.3M | 10M | Trained-tokenizer, training, checkpoint, publication, and inference smoke test |
+| 2 | `0002-foundation-mixture-canary.yaml.tmpl` | 7.3M | 50M | Exact 5:2:1 weighted-stream accounting |
+| 3 | `0003-foundation-small-language.yaml.tmpl` | 76.6M | 760M | Language diagnostic using only Wikimedia and PressBooks |
+| 4 | `0004-foundation-small-general.yaml.tmpl` | 76.6M | 1.5B | General-mixture diagnostic; not a useful-assistant claim |
+| 5 | `0005-foundation-medium-pilot.yaml.tmpl` | 297.2M | 3.0B | First general-capability pilot |
+| 6 | `0006-foundation-medium.yaml.tmpl` | 297.2M | 6.0B | General-foundation qualification |
 
-The small pair allocates 32.2M of 76.4M parameters (42.1%) to embeddings. The
-medium pair allocates 57.9M of 336.6M (17.2%). Pilot and qualification within
-each pair keep architecture and corpus recipe fixed. Gates 0 and 1 are systems
-and data-policy checks, not capability evidence. Gate 1 has a one-time
-materialization cost of roughly 23.6 GiB; later rungs reuse that cache. The
-active mixture is 62.5% Wikimedia, 25% PressBooks, and 12.5% PLOS by token
-target.
+The 76.6M architecture allocates 10.2M parameters (13.4%) to tied token
+embeddings. The 297.2M architecture allocates 18.4M (6.2%). Gate 3 deliberately
+removes PLOS and uses a 1:1 Wikimedia/PressBooks stream to test ordinary prose
+before adding the scientific domain. Gates 2, 4, 5, and 6 use 62.5% Wikimedia,
+25% PressBooks, and 12.5% PLOS.
+
+## Rules
+
+1. Use a fresh model name for each run and a specific run ID for evaluation.
+2. Never run a later gate while an earlier gate is unqualified.
+3. Preserve compose, summary, run ID, loss history, consumption, and samples.
+4. Evaluate temperature 0 first. Sampling cannot rescue deterministic collapse.
+5. A falling held-out loss is necessary but never sufficient for promotion.
+6. Change one variable after failure and repeat that gate.
+7. Do not add conversation data until Gate 6 passes twice with different seeds.
 
 ## Run procedure
 
-For this ladder, retain the 23.6 GiB assessed corpus selection between runs.
-On rank 0, configure a bound with headroom; hostfile launch propagates it to
-secondary workers:
+After Gate 0, start only Gate 1:
 
 ```console
-waldo config set lookaside.cache.retain-completed true
-waldo config set lookaside.cache.max-size 30GiB
-waldo lookaside cache status
+go run ./cmd/waldo/ model forecast \
+  composes/0001-foundation-pipeline-canary.yaml.tmpl
+
+go run ./cmd/waldo/ model train foundation-pipeline-canary-01 \
+  composes/0001-foundation-pipeline-canary.yaml.tmpl \
+  --hostfile ~/hostfile
 ```
 
-For each rung:
+Extract the selected run ID and always evaluate that immutable artifact:
 
 ```console
-waldo model forecast composes/0000-foundation-canary.yaml
-waldo model train foundation-canary-02 composes/0000-foundation-canary.yaml
-```
-
-Record every completed run ID. Test a specific artifact rather than whatever
-run happens to be selected by the model name:
-
-```console
-waldo model chat foundation-canary-02 \
-  --run-id RUN_ID --raw --temperature 0 --max-tokens 80 \
+run_id="$(go run ./cmd/waldo/ --json model summary MODEL_NAME | jq -r '.bom.current_run_id')"
+go run ./cmd/waldo/ model chat MODEL_NAME \
+  --run-id "$run_id" --raw --temperature 0 --max-tokens 80 \
   "The Linux kernel is"
 ```
 
-Track held-out loss at every recorded checkpoint. Run all 15 prompts against
-the selected checkpoint artifact and record its run ID. A separately published
-artifact must produce materially equivalent loss and generations.
+## Fixed prompts
 
-For capability rungs, also run prompts 1, 3, 11, and 14 at temperature 0.7.
-These sampled probes do not replace deterministic scoring; they distinguish a
-narrow greedy path from collapse across the learned distribution.
-
-## Fixed evaluation prompts
-
-Factual and definitional continuations:
+Use the same prompts at every capability gate:
 
 1. `The Linux kernel is`
 2. `Linux is an operating system whose kernel was created by`
@@ -121,111 +109,74 @@ Factual and definitional continuations:
 8. `Two plus two equals`
 9. `Plants use sunlight to`
 10. `An operating system manages`
-
-Coherence continuations:
-
 11. `Once upon a time`
 12. `The experiment failed because`
 13. `To install software on Linux,`
 14. `A backup is useful because`
 15. `The scientist compared the results and concluded`
 
-Score each response before looking at the aggregate:
+Score each response: **0** means incoherent, unrelated, or materially wrong;
+**1** means relevant but incomplete, vague, or partly wrong; **2** means coherent
+and materially correct. Separately mark a repetition failure when a phrase or
+sentence loops more than twice or successive sentences make no progress.
 
-- **0:** incoherent, contradictory, unrelated, or fabricated in a way that
-  defeats the prompt.
-- **1:** grammatical and relevant, but incomplete, vague, or partly wrong.
-- **2:** coherent, materially correct, and directly continues the prompt.
-
-A response has a repetition failure if a phrase or sentence loops more than
-twice or the answer makes no progress across successive sentences.
+For Gates 3-6, also sample prompts 1, 3, 11, and 14 at temperature 0.7. These
+samples diagnose distributional collapse but do not replace deterministic
+scores.
 
 ## Promotion gates
 
-### Gate 0: canary
+### Gate 1: pipeline canary
 
-- Training, evaluation, checkpointing, resume, publication, and inference all
-  complete without non-finite values.
-- Materialization resolves one assessed shard (about 181 MB), not the full
-  multi-corpus dataset.
-- Token accounting is exact and held-out loss moves downward.
-- The selected checkpoint and published artifact agree within the existing
-  artifact-integrity tolerance.
-- All 15 prompts produce non-empty output. No knowledge score is required.
+- Training, checkpointing, evaluation, publication, and inference complete.
+- Token accounting is exact; loss is finite and lower than initialization.
+- Reloaded artifact loss matches the selected checkpoint.
+- All 15 prompts return non-empty output. No knowledge score is required.
 
-Observed result: `foundation-canary-02` run `100f0082a33af66f` completed all
-306 steps on two H200 GPUs. Held-out loss fell from 10.8531 to 6.2503, and the
-selected, master, and reloaded-artifact losses agreed at 6.2503. Deterministic
-generation was non-empty but collapsed into repeated phrases and bullets. At
-only 0.31 tokens per parameter, this is a systems pass and a capability fail by
-design; it must not be used to judge the corpus recipe.
+### Gate 2: mixture canary
 
-### Gate 1: mixture canary
+- Gate 1 still passes.
+- Exposure is within 0.1 percentage points of 62.5% Wikimedia, 25% PressBooks,
+  and 12.5% PLOS; every corpus contributes.
+- No capability threshold applies to this 7.3M model.
 
-- Gate 0 still passes.
-- Observed token exposure is within 0.1 percentage points of 62.5% Wikimedia,
-  25.0% PressBooks, and 12.5% PLOS.
-- Every eligible corpus contributes positive token targets.
-- No capability or factual-quality threshold applies to this 16M model.
+### Gate 3: small language diagnostic
 
-Observed result: `foundation-mixture-canary-01` run `84c76087cb8bf05c`
-completed 50,003,968 token targets. Consumption was 31,277,194 Wikimedia
-(62.549%), 12,465,512 PressBooks (24.929%), and 6,261,262 PLOS (12.522%). All
-three deviations were below 0.1 percentage points. Held-out loss fell from
-10.8795 to a final-best 5.0871, and the reloaded artifact matched. Gate 1
-passes.
+- At least 10/15 deterministic outputs begin with a grammatical English
+  sentence or fragment.
+- At least 10/15 remain related to the prompt for the first sentence.
+- At least 8/15 avoid repetition failure.
+- At least 3/4 sampled probes remain relevant and avoid repetition.
+- No factual-score threshold applies.
 
-### Gate 2: small pilot
+### Gate 4: small general diagnostic
 
-- Gate 1 passes.
-- At least **8/15** responses avoid severe repetition failure.
-- At least **10/15** responses contain recognizable English word sequences
-  related to the prompt.
-- At least **3/4** temperature-0.7 probes remain relevant and avoid severe
-  repetition.
-- No factual accuracy threshold applies. This rung is expected to babble.
-- Held-out loss is still improving at the selected checkpoint.
+- Fixed-prompt score is at least 10/30.
+- At least 10/15 outputs avoid repetition and 6/10 factual prompts are relevant.
+- It improves over Gate 3 on the fixed suite without a loss or generation peak.
+- Passing authorizes the medium pilot; it does not claim the model is useful.
 
-### Gate 3: small qualification
+### Gate 5: medium pilot
 
-- Fixed-prompt score is at least **10/30**.
-- At least **10/15** responses avoid repetition failure.
-- At least **10/15** begin with a grammatical sentence or sentence fragment.
-- The selected checkpoint improves materially over the small pilot without
-  crossing a visible loss or generation peak.
+- Fixed-prompt score is at least 15/30.
+- At least 12/15 outputs avoid repetition.
+- At least 7/10 factual prompts are relevant and at least 5 score 1 or better.
+- Loss and prompt quality both improve over Gate 4.
 
-### Gate 4: medium pilot
+### Gate 6: medium qualification
 
-- Fixed-prompt score is at least **15/30**.
-- At least **12/15** responses avoid repetition failure.
-- At least 7 of the 10 factual prompts are relevant, even if not fully correct.
-- Loss and prompt quality both improve relative to the small qualification.
+- Fixed-prompt score is at least 18/30.
+- At least 13/15 outputs avoid repetition.
+- At least 8/10 factual prompts score 1 or better.
+- Repeat with seed 43 only after seed 42 passes; both runs must qualify.
+- Only then design a separate conversation-tuning ladder.
 
-### Gate 5: medium qualification
+## Questions recorded at every gate
 
-- Fixed-prompt score is at least **18/30**.
-- At least **13/15** responses avoid repetition failure.
-- At least 8 of the 10 factual prompts score at least 1.
-- Repeat once with seed 43 only after the seed-42 run passes. Both runs must
-  pass artifact integrity and avoid broad repetition collapse.
-- Only after this gate passes may a separate conversational-tuning ladder be
-  designed. These prompts remain permanent regression tests.
-
-## Questions to answer at every rung
-
-Record short, evidence-backed answers with the run results:
-
-1. Did held-out loss and fixed-prompt capability improve together?
-2. At which checkpoint did prompt score peak?
-3. Did any corpus dominate sampled tokens beyond its declared weight?
-4. Did any host, rank, or resume event change token accounting or loss?
-5. Are selected-checkpoint and published-artifact results equivalent?
-6. Which failures are factual, incoherent, repetitive, or off-topic?
-7. Does the result justify the cost of the next rung?
-
-If a rung fails, investigate the smallest relevant variable: corpus samples
-and weights, tokenizer, initialization, learning rate and schedule, effective
-global batch, or architecture. Do not compensate for a broken foundation with
-instruction data.
-
-`holding/tool-use.yaml` remains intentionally outside this ladder.
+1. Did held-out loss and fixed-prompt quality improve together?
+2. Which checkpoint had the best prompt score?
+3. Did observed corpus exposure match the declared weights?
+4. Did host count, rank, or resume change accounting or loss?
+5. Did the selected checkpoint and published artifact agree?
+6. Were failures factual, incoherent, repetitive, or off-topic?
+7. Does the evidence justify the next gate's cost?
