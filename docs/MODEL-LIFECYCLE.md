@@ -620,14 +620,18 @@ a hash of the contributing evidence.
 Before changing a compose tokenizer, train and inspect a bounded candidate:
 
 ```text
-waldo model train-tokenizer core/books core/common-pile science/plos \
-  --output tokenizer.json --vocabulary-size 32000 --sample-bytes 67108864
+waldo model train-tokenizer core/common-pile/wikimedia \
+  core/common-pile/pressbooks science/plos \
+  --output composes/tokenizers/foundation-16k.json \
+  --vocabulary-size 16000 --sample-bytes 268435456
 ```
 
 The command requires every selected corpus to pass the distributable gate,
-pins the complete corpus BOM and deterministic sample identity, and reports
-bytes per token beside `r50k_base`. The resulting artifact remains a candidate
-until domain compression and G1/G2 capability tests approve it.
+pins the complete corpus BOM and deterministic balanced sample identity, and
+reports bytes per token beside `r50k_base`. Select an approved candidate from a
+compose with `tokenizer.artifact_path`; WALDO validates and embeds the artifact
+so multi-host training and inference use the same bytes. The resulting artifact
+remains a candidate until domain compression and capability tests approve it.
 
 Create a pinned evaluation BOM from a reviewed definition and index selection:
 

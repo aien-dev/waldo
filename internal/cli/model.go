@@ -1039,17 +1039,11 @@ func secondaryStreamRequest(plan model.MultiNodePlan, scratch string) (training.
 	if plan.EvaluationSet == nil {
 		return training.Request{}, fmt.Errorf("launcher plan carries no held-out split")
 	}
-	var architecture struct {
-		VocabularySize uint64 `json:"vocabulary_size"`
-		Tokenizer      struct {
-			Name     string `json:"name"`
-			Revision string `json:"revision"`
-		} `json:"tokenizer"`
-	}
+	var architecture model.Architecture
 	if err := json.Unmarshal(plan.Architecture, &architecture); err != nil {
 		return training.Request{}, fmt.Errorf("decode launcher plan architecture: %w", err)
 	}
-	tokenizer, _, err := training.ResolveTokenizer(architecture.Tokenizer.Name, architecture.Tokenizer.Revision, architecture.VocabularySize)
+	tokenizer, _, err := architecture.ResolveTokenizer()
 	if err != nil {
 		return training.Request{}, fmt.Errorf("resolve launcher plan tokenizer: %w", err)
 	}
@@ -1154,17 +1148,11 @@ func secondaryNodeLocalRequest(commandContext Context, plan model.MultiNodePlan,
 	if len(inputs) == 0 {
 		return training.Request{}, fmt.Errorf("primary plan resolved no verified shard inputs")
 	}
-	var architecture struct {
-		VocabularySize uint64 `json:"vocabulary_size"`
-		Tokenizer      struct {
-			Name     string `json:"name"`
-			Revision string `json:"revision"`
-		} `json:"tokenizer"`
-	}
+	var architecture model.Architecture
 	if err := json.Unmarshal(plan.Architecture, &architecture); err != nil {
 		return training.Request{}, fmt.Errorf("decode primary plan architecture: %w", err)
 	}
-	tokenizerSpec, codec, err := training.ResolveTokenizer(architecture.Tokenizer.Name, architecture.Tokenizer.Revision, architecture.VocabularySize)
+	tokenizerSpec, codec, err := architecture.ResolveTokenizer()
 	if err != nil {
 		return training.Request{}, fmt.Errorf("resolve primary plan tokenizer: %w", err)
 	}

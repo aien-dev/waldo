@@ -60,7 +60,7 @@ func runModelTrainTokenizer(context Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return err
 	}
-	parameters, err := training.ResolveParameters(training.Parameters{Steps: 1, BatchSize: 1, SequenceLength: 8, LearningRate: 0.001, Seed: 42})
+	parameters, err := training.ResolveParameters(training.Parameters{Profile: training.BalancedProfile, Steps: 1, BatchSize: 1, SequenceLength: 8, LearningRate: 0.001, Seed: 42})
 	if err != nil {
 		return err
 	}

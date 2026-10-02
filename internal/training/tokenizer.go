@@ -6,6 +6,7 @@
 package training
 
 import (
+	"encoding/json"
 	"fmt"
 
 	waldoTokenizer "github.com/openwaldo/waldo/internal/tokenizer"
@@ -26,12 +27,58 @@ const (
 )
 
 type TokenizerSpec struct {
-	Name           string `json:"name"`
-	Revision       string `json:"revision"`
-	VocabularySize int    `json:"vocabulary_size"`
-	PadID          int    `json:"pad_id"`
-	BOSID          int    `json:"bos_id"`
-	EOSID          int    `json:"eos_id"`
+	Name           string                   `json:"name"`
+	Revision       string                   `json:"revision"`
+	VocabularySize int                      `json:"vocabulary_size"`
+	PadID          int                      `json:"pad_id"`
+	BOSID          int                      `json:"bos_id"`
+	EOSID          int                      `json:"eos_id"`
+	Artifact       *waldoTokenizer.Artifact `json:"artifact,omitempty"`
+}
+
+func ResolveArchitectureTokenizer(raw json.RawMessage) (TokenizerSpec, TokenCodec, error) {
+	var architecture struct {
+		VocabularySize uint64 `json:"vocabulary_size"`
+		Tokenizer      struct {
+			Name     string                   `json:"name"`
+			Revision string                   `json:"revision"`
+			Artifact *waldoTokenizer.Artifact `json:"artifact,omitempty"`
+		} `json:"tokenizer"`
+	}
+	if err := json.Unmarshal(raw, &architecture); err != nil {
+		return TokenizerSpec{}, nil, err
+	}
+	spec := TokenizerSpec{Name: architecture.Tokenizer.Name, Revision: architecture.Tokenizer.Revision, VocabularySize: int(architecture.VocabularySize), Artifact: architecture.Tokenizer.Artifact}
+	if spec.Artifact != nil {
+		spec.PadID, spec.BOSID, spec.EOSID = spec.Artifact.PadID, spec.Artifact.BOSID, spec.Artifact.EOSID
+	}
+	return ResolveTokenizerSpec(spec)
+}
+
+// ResolveTokenizerSpec resolves both built-in tokenizers and a content-pinned
+// trained tokenizer embedded in the portable model contract.
+func ResolveTokenizerSpec(spec TokenizerSpec) (TokenizerSpec, TokenCodec, error) {
+	if spec.Name != waldoTokenizer.TrainedName {
+		if spec.Artifact != nil {
+			return TokenizerSpec{}, nil, fmt.Errorf("built-in tokenizer %s cannot embed a trained artifact", spec.Name)
+		}
+		return ResolveTokenizer(spec.Name, spec.Revision, uint64(spec.VocabularySize))
+	}
+	if spec.Artifact == nil {
+		return TokenizerSpec{}, nil, fmt.Errorf("trained tokenizer %s@%s requires its embedded artifact", spec.Name, spec.Revision)
+	}
+	artifact := *spec.Artifact
+	if err := artifact.Validate(); err != nil {
+		return TokenizerSpec{}, nil, err
+	}
+	if artifact.Name != spec.Name || artifact.Revision != spec.Revision || artifact.VocabularySize != spec.VocabularySize || artifact.PadID != spec.PadID || artifact.BOSID != spec.BOSID || artifact.EOSID != spec.EOSID {
+		return TokenizerSpec{}, nil, fmt.Errorf("trained tokenizer specification does not match its artifact")
+	}
+	codec, err := artifact.Codec()
+	if err != nil {
+		return TokenizerSpec{}, nil, err
+	}
+	return spec, codec, nil
 }
 
 type TokenCodec interface {

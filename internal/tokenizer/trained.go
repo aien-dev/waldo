@@ -28,18 +28,18 @@ type Sample struct {
 }
 
 type Artifact struct {
-	Kind                string   `json:"kind"`
-	Schema              int      `json:"schema"`
-	Name                string   `json:"name"`
-	Revision            string   `json:"revision"`
-	VocabularySize      int      `json:"vocabulary_size"`
-	PadID               int      `json:"pad_id"`
-	BOSID               int      `json:"bos_id"`
-	EOSID               int      `json:"eos_id"`
-	TrainingInputSHA256 string   `json:"training_input_sha256"`
-	CorpusBOMSHA256     string   `json:"corpus_bom_sha256"`
-	TrainingBytes       int64    `json:"training_bytes"`
-	Pieces              []string `json:"pieces"`
+	Kind                string   `json:"kind" yaml:"kind"`
+	Schema              int      `json:"schema" yaml:"schema"`
+	Name                string   `json:"name" yaml:"name"`
+	Revision            string   `json:"revision" yaml:"revision"`
+	VocabularySize      int      `json:"vocabulary_size" yaml:"vocabulary_size"`
+	PadID               int      `json:"pad_id" yaml:"pad_id"`
+	BOSID               int      `json:"bos_id" yaml:"bos_id"`
+	EOSID               int      `json:"eos_id" yaml:"eos_id"`
+	TrainingInputSHA256 string   `json:"training_input_sha256" yaml:"training_input_sha256"`
+	CorpusBOMSHA256     string   `json:"corpus_bom_sha256" yaml:"corpus_bom_sha256"`
+	TrainingBytes       int64    `json:"training_bytes" yaml:"training_bytes"`
+	Pieces              []string `json:"pieces" yaml:"pieces"`
 }
 
 type Comparison struct {

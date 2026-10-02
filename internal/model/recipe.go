@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/openwaldo/waldo/internal/corpus"
+	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 	"github.com/openwaldo/waldo/internal/training"
 	"gopkg.in/yaml.v3"
 )
@@ -139,8 +140,10 @@ type Architecture struct {
 }
 
 type Tokenizer struct {
-	Name     string `json:"name" yaml:"name"`
-	Revision string `json:"revision" yaml:"revision"`
+	Name         string                   `json:"name" yaml:"name"`
+	Revision     string                   `json:"revision" yaml:"revision"`
+	ArtifactPath string                   `json:"-" yaml:"artifact_path,omitempty"`
+	Artifact     *waldotokenizer.Artifact `json:"artifact,omitempty" yaml:"artifact,omitempty"`
 }
 
 type Stage struct {
@@ -412,10 +415,51 @@ func LoadCompose(path string) (Compose, string, error) {
 		return Compose{}, "", fmt.Errorf("%s: %w", absolute, err)
 	}
 	compose.normalizeLegacyInteraction()
+	if err := resolveComposeTokenizerArtifact(&compose, filepath.Dir(absolute)); err != nil {
+		return Compose{}, "", fmt.Errorf("%s: %w", absolute, err)
+	}
 	if err := compose.Validate(); err != nil {
 		return Compose{}, "", fmt.Errorf("%s: %w", absolute, err)
 	}
 	return compose, absolute, nil
+}
+
+func resolveComposeTokenizerArtifact(compose *Compose, directory string) error {
+	tokenizer := &compose.Architecture.Tokenizer
+	if tokenizer.ArtifactPath == "" {
+		return nil
+	}
+	path := tokenizer.ArtifactPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(directory, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read tokenizer artifact %s: %w", path, err)
+	}
+	var artifact waldotokenizer.Artifact
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&artifact); err != nil {
+		return fmt.Errorf("decode tokenizer artifact %s: %w", path, err)
+	}
+	if err := artifact.Validate(); err != nil {
+		return fmt.Errorf("validate tokenizer artifact %s: %w", path, err)
+	}
+	if tokenizer.Name != "" && tokenizer.Name != artifact.Name {
+		return fmt.Errorf("tokenizer name %s does not match artifact %s", tokenizer.Name, artifact.Name)
+	}
+	if tokenizer.Revision != "" && tokenizer.Revision != artifact.Revision {
+		return fmt.Errorf("tokenizer revision %s does not match artifact %s", tokenizer.Revision, artifact.Revision)
+	}
+	if compose.Architecture.VocabularySize != uint64(artifact.VocabularySize) {
+		return fmt.Errorf("architecture vocabulary_size %d does not match tokenizer artifact %d", compose.Architecture.VocabularySize, artifact.VocabularySize)
+	}
+	tokenizer.Name = artifact.Name
+	tokenizer.Revision = artifact.Revision
+	tokenizer.ArtifactPath = ""
+	tokenizer.Artifact = &artifact
+	return nil
 }
 
 // normalizeLegacyInteraction preserves schema-1 composes written before tool
@@ -608,8 +652,29 @@ func (architecture Architecture) Validate() error {
 	if architecture.Tokenizer.Name == "" || architecture.Tokenizer.Revision == "" {
 		return fmt.Errorf("tokenizer name and immutable revision are required")
 	}
+	if architecture.Tokenizer.ArtifactPath != "" {
+		return fmt.Errorf("tokenizer artifact_path must be resolved before architecture validation")
+	}
+	if architecture.Tokenizer.Name == waldotokenizer.TrainedName || architecture.Tokenizer.Artifact != nil {
+		if _, _, err := architecture.ResolveTokenizer(); err != nil {
+			return err
+		}
+	}
 	_, err := architecture.Forecast()
 	return err
+}
+
+func (architecture Architecture) ResolveTokenizer() (training.TokenizerSpec, training.TokenCodec, error) {
+	spec := training.TokenizerSpec{
+		Name: architecture.Tokenizer.Name, Revision: architecture.Tokenizer.Revision,
+		VocabularySize: int(architecture.VocabularySize), Artifact: architecture.Tokenizer.Artifact,
+	}
+	if spec.Artifact != nil {
+		spec.PadID = spec.Artifact.PadID
+		spec.BOSID = spec.Artifact.BOSID
+		spec.EOSID = spec.Artifact.EOSID
+	}
+	return training.ResolveTokenizerSpec(spec)
 }
 
 func (architecture Architecture) Forecast() (ArchitectureForecast, error) {

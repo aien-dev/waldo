@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,8 +17,50 @@ import (
 
 	"github.com/openwaldo/waldo/internal/model"
 	"github.com/openwaldo/waldo/internal/pytorchruntime"
+	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 	"github.com/openwaldo/waldo/internal/training"
 )
+
+func TestLoadTokenizerUsesEmbeddedTrainedArtifact(t *testing.T) {
+	artifact, err := waldotokenizer.TrainBytepiece(
+		[]waldotokenizer.Sample{{ID: "one", Text: "portable tokenizer sample"}},
+		300,
+		1024,
+		strings.Repeat("a", 64),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := struct {
+		Kind   string `json:"kind"`
+		Schema int    `json:"schema"`
+		training.TokenizerSpec
+	}{
+		Kind: "waldo-tokenizer", Schema: 1,
+		TokenizerSpec: training.TokenizerSpec{
+			Name: artifact.Name, Revision: artifact.Revision,
+			VocabularySize: artifact.VocabularySize,
+			PadID:          artifact.PadID, BOSID: artifact.BOSID, EOSID: artifact.EOSID,
+			Artifact: &artifact,
+		},
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "tokenizer.json")
+	if err := os.WriteFile(path, encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spec, codec, err := loadTokenizer(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "portable tokenizer"
+	if spec.Revision != artifact.Revision || codec.Decode(codec.Encode(text)) != text {
+		t.Fatalf("spec = %+v, round trip = %q", spec, codec.Decode(codec.Encode(text)))
+	}
+}
 
 func TestResolveArtifactsVerifiesCurrentRealRun(t *testing.T) {
 	root := t.TempDir()

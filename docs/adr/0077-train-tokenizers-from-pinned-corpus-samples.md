@@ -13,7 +13,7 @@ by rescanning the complete corpus once per merge.
 
 `waldo model train-tokenizer` accepts an index selection only after the strict
 distributable review passes. It pins the corpus BOM digest, takes a bounded
-deterministic record sample, and creates a content-identified
+deterministic sample balanced across selected corpus paths, and creates a content-identified
 `waldo/bytepiece` artifact.
 
 The trainer makes one pass over the sample, counts UTF-8 lexical runs, orders
@@ -24,8 +24,10 @@ reports bytes per token for both the candidate and `r50k_base` on the identical
 sample.
 
 The artifact is not selected by a model merely because it exists. Its revision
-must pass domain-specific compression, round-trip, and downstream G1/G2 gates
-before a compose adopts it.
+must pass domain-specific compression and round-trip checks before a compose
+adopts it through `tokenizer.artifact_path`. Compose loading validates the
+artifact and embeds its complete content in the immutable model architecture,
+run plan, and emitted tokenizer artifact.
 
 ## Consequences
 
@@ -33,5 +35,6 @@ before a compose adopts it.
   of thousands of complete corpus rescans.
 - The exact corpus BOM, sample identity, ordered vocabulary, and special-token
   IDs are immutable artifact facts.
-- The `conversation3` compose retains `r50k_base` until the admitted corpus is
-  finalized and the candidate wins its promotion tests.
+- Secondary hosts and later inference receive the embedded tokenizer; they do
+  not rely on the original machine-local `artifact_path`.
+- Candidate tokenizers still require capability comparison before promotion.

@@ -711,7 +711,7 @@ func (builder Builder) executeTrainingAttempt(ctx context.Context, name, modelPa
 	tokenizerSpec := training.TokenizerSpec{Name: record.Architecture.Tokenizer.Name, Revision: record.Architecture.Tokenizer.Revision, VocabularySize: int(record.Architecture.VocabularySize), PadID: 0, BOSID: 1, EOSID: 2}
 	if selection.Execution.Backend.Name == training.BackendPyTorch || selection.Execution.Backend.Name == training.BackendTorchTitan || selection.Execution.Backend.Name == training.BackendMLX {
 		var err error
-		tokenizerSpec, _, err = training.ResolveTokenizer(record.Architecture.Tokenizer.Name, record.Architecture.Tokenizer.Revision, record.Architecture.VocabularySize)
+		tokenizerSpec, _, err = record.Architecture.ResolveTokenizer()
 		if err != nil {
 			return Inspection{}, fmt.Errorf("stage %s tokenizer: %w", stage.Name, err)
 		}

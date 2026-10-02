@@ -25,6 +25,7 @@ import (
 	"github.com/openwaldo/waldo/internal/index"
 	"github.com/openwaldo/waldo/internal/record"
 	"github.com/openwaldo/waldo/internal/shard"
+	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 	"github.com/openwaldo/waldo/internal/training"
 	"github.com/parquet-go/parquet-go"
 	"gopkg.in/yaml.v3"
@@ -68,6 +69,62 @@ func TestLoadComposeIsStrictAndKeepsIndexPathsLogical(t *testing.T) {
 	}
 	if _, _, err := LoadCompose(path); err == nil || !strings.Contains(err.Error(), "field backend not found") {
 		t.Fatalf("LoadCompose backend error = %v", err)
+	}
+}
+
+func TestLoadComposeEmbedsTrainedTokenizerArtifact(t *testing.T) {
+	directory := t.TempDir()
+	artifact, err := waldotokenizer.TrainBytepiece(
+		[]waldotokenizer.Sample{{ID: "one", Text: "small deterministic tokenizer sample"}},
+		300,
+		1024,
+		strings.Repeat("a", 64),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "tokenizer.json"), encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	document := strings.Replace(composeYAML(""), "vocabulary_size: 256", fmt.Sprintf("vocabulary_size: %d", artifact.VocabularySize), 1)
+	document = strings.Replace(document, "tokenizer:\n    name: byte\n    revision: sha256:example", "tokenizer:\n    artifact_path: tokenizer.json", 1)
+	path := filepath.Join(directory, "compose.yaml")
+	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	compose, _, err := LoadCompose(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compose.Architecture.Tokenizer.ArtifactPath != "" || compose.Architecture.Tokenizer.Artifact == nil || compose.Architecture.Tokenizer.Revision != artifact.Revision {
+		t.Fatalf("resolved tokenizer = %+v", compose.Architecture.Tokenizer)
+	}
+	_, codec, err := compose.Architecture.ResolveTokenizer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := "small tokenizer"; codec.Decode(codec.Encode(text)) != text {
+		t.Fatalf("trained tokenizer round trip = %q", codec.Decode(codec.Encode(text)))
+	}
+
+	portable, err := json.Marshal(compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	portablePath := filepath.Join(directory, "COMPOSE.json")
+	if err := os.WriteFile(portablePath, portable, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, _, err := LoadCompose(portablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(compose.Architecture.Tokenizer, reloaded.Architecture.Tokenizer) {
+		t.Fatalf("portable tokenizer = %+v, want %+v", reloaded.Architecture.Tokenizer, compose.Architecture.Tokenizer)
 	}
 }
 

@@ -303,8 +303,10 @@ compatibility boundary.
 | `qk_normalization` | no | boolean; default `false` | RMS-normalizes rotary query and key vectors before attention. |
 | `initialization` | no | `normal` or `depth-scaled`; default `normal` | Weight initialization recipe. `depth-scaled` reduces residual output projection variance by model depth. |
 | `parameter_dtype` | yes | `float32`, `float16`, or `bfloat16` | Portable parameter and mixed-precision artifact declaration. Backend support is checked before training. |
-| `tokenizer.name` | yes | supported name | Selects WALDO's offline tokenizer implementation. |
-| `tokenizer.revision` | yes | immutable revision | Pins exact tokenizer behavior. |
+| `tokenizer.name` | yes for built-ins | supported name | Selects WALDO's offline tokenizer implementation. It is populated from a trained artifact when `artifact_path` is used. |
+| `tokenizer.revision` | yes for built-ins | immutable revision | Pins exact tokenizer behavior. It is populated from a trained artifact when `artifact_path` is used. |
+| `tokenizer.artifact_path` | trained tokenizer only | path | Loads a `waldo-trained-tokenizer` artifact relative to the compose, validates it, and embeds it in the immutable model contract. |
+| `tokenizer.artifact` (`artifact`) | resolved form only | object | Content-pinned trained tokenizer embedded by WALDO in saved compose, run-plan, and model artifacts. Authors should use `artifact_path` rather than inline this object. |
 
 The architecture determines the model parameter count. WALDO derives and
 reports that count in forecasts and model summaries; it is not an independent
@@ -319,9 +321,12 @@ The tokenizer name, revision, and vocabulary size are one exact contract:
 | `byte` | `builtin-byte-schema-1` | 259 | Legacy and very small byte-token models. |
 | `tiktoken/r50k_base` | `tiktoken-r50k-base` | 50259 | Compact English-oriented subword models. |
 | `tiktoken/cl100k_base` | `tiktoken-cl100k-base` | 100259 | Larger multilingual and code-capable subword vocabulary. |
+| `waldo/bytepiece` | artifact revision | artifact vocabulary | Corpus-trained byte-fallback vocabulary selected with `tokenizer.artifact_path`. |
 
 WALDO performs tokenization before the framework worker, ensuring supported
-backends receive identical token IDs.
+backends receive identical token IDs. A trained artifact is expanded into the
+saved architecture, so secondary hosts and later inference do not depend on a
+machine-local tokenizer path.
 
 ## Stage fields
 
