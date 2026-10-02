@@ -6,28 +6,24 @@
 package composes_test
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/openwaldo/waldo/internal/corpus"
 	"github.com/openwaldo/waldo/internal/model"
-	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 	"github.com/openwaldo/waldo/internal/training"
 )
 
 var foundationFiles = []string{
-	"0001-foundation-pipeline-canary.yaml.tmpl",
-	"0002-foundation-mixture-canary.yaml.tmpl",
-	"0003-foundation-small-language.yaml.tmpl",
-	"0004-foundation-small-general.yaml.tmpl",
-	"0005-foundation-medium-pilot.yaml.tmpl",
-	"0006-foundation-medium.yaml.tmpl",
+	"0001-foundation-pipeline-canary.yaml",
+	"0002-foundation-mixture-canary.yaml",
+	"0003-foundation-small-language.yaml",
+	"0004-foundation-small-general.yaml",
+	"0005-foundation-medium-pilot.yaml",
+	"0006-foundation-medium.yaml",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -36,7 +32,7 @@ func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range []any{
-		model.Compose{}, model.ComposeBase{}, model.Architecture{}, model.Tokenizer{}, model.Stage{}, model.CorpusSelection{}, corpus.RecordFilter{}, corpus.ValueFilter{}, corpus.DateFilter{}, training.ConversationTransform{}, training.Parameters{},
+		model.Compose{}, model.ComposeBase{}, model.Architecture{}, model.Tokenizer{}, model.TokenizerTraining{}, model.Stage{}, model.CorpusSelection{}, corpus.RecordFilter{}, corpus.ValueFilter{}, corpus.DateFilter{}, training.ConversationTransform{}, training.Parameters{},
 	} {
 		typeOf := reflect.TypeOf(value)
 		for index := 0; index < typeOf.NumField(); index++ {
@@ -52,7 +48,7 @@ func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
 }
 
 func TestEveryReferenceComposeSettingResolvesIntoTrainingContract(t *testing.T) {
-	files, err := filepath.Glob("*.yaml.tmpl")
+	files, err := filepath.Glob("*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +85,7 @@ func TestEveryReferenceComposeSettingResolvesIntoTrainingContract(t *testing.T) 
 }
 
 func TestFoundationLadderFilesAndForecasts(t *testing.T) {
-	files, err := filepath.Glob("*.yaml.tmpl")
+	files, err := filepath.Glob("*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +127,7 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 			t.Fatalf("%s is not a fresh, foundation-only compose", file)
 		}
 		architecture := compose.Architecture
-		if architecture.Tokenizer.Name != waldotokenizer.TrainedName || architecture.Tokenizer.Artifact == nil || architecture.VocabularySize != 16000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
+		if architecture.Tokenizer.Name != "" || architecture.Tokenizer.Artifact != nil || architecture.Tokenizer.Training == nil || architecture.Tokenizer.Training.Algorithm != model.TokenizerAlgorithmBytepieceV1 || architecture.Tokenizer.Training.SampleBytes != 268435456 || architecture.Tokenizer.Training.MaxCompressionRegression != 0.10 || architecture.VocabularySize != 16000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
 			t.Fatalf("%s architecture controls = %+v", file, architecture)
 		}
 		stage := compose.Stages[0]
@@ -239,66 +235,11 @@ func TestToolUseComposeHasSizedBaseAndStructuredToolStage(t *testing.T) {
 
 func loadCompose(t *testing.T, path string) model.Compose {
 	t.Helper()
-	if !strings.HasSuffix(path, ".tmpl") {
-		compose, _, err := model.LoadCompose(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return compose
-	}
-	document, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	directory := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(directory, "tokenizers"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	encoded, err := json.Marshal(referenceTokenizer(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "tokenizers", "foundation-16k.json"), encoded, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	resolvedPath := filepath.Join(directory, filepath.Base(path))
-	if err := os.WriteFile(resolvedPath, document, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	compose, _, err := model.LoadCompose(resolvedPath)
+	compose, _, err := model.LoadCompose(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return compose
-}
-
-var (
-	referenceTokenizerOnce sync.Once
-	referenceArtifact      waldotokenizer.Artifact
-	referenceArtifactErr   error
-)
-
-func referenceTokenizer(t *testing.T) waldotokenizer.Artifact {
-	t.Helper()
-	referenceTokenizerOnce.Do(func() {
-		var sample strings.Builder
-		for index := 0; index < 16000; index++ {
-			fmt.Fprintf(&sample, "piece%05d.", index)
-		}
-		referenceArtifact, referenceArtifactErr = waldotokenizer.TrainBytepiece(
-			[]waldotokenizer.Sample{{ID: "reference", Text: sample.String()}},
-			16000,
-			int64(sample.Len()),
-			strings.Repeat("a", 64),
-		)
-	})
-	if referenceArtifactErr != nil {
-		t.Fatal(referenceArtifactErr)
-	}
-	if referenceArtifact.VocabularySize != 16000 {
-		t.Fatalf("reference tokenizer vocabulary = %d", referenceArtifact.VocabularySize)
-	}
-	return referenceArtifact
 }
 
 func slicesIndex(values []string, value string) int {

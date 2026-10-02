@@ -86,7 +86,7 @@ func (resolver MLXResolver) Resolve(ctx context.Context, request ResolveRequest)
 	if architecture.Family != "decoder-transformer" {
 		return Selection{}, fmt.Errorf("MLX backend does not support architecture family %q", architecture.Family)
 	}
-	if _, _, err := ResolveArchitectureTokenizer(request.Architecture); err != nil {
+	if err := ValidateArchitectureTokenizer(request.Architecture); err != nil {
 		return Selection{}, fmt.Errorf("MLX backend: %w", err)
 	}
 	candidates := resolver.Candidates

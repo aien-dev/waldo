@@ -633,6 +633,13 @@ compose with `tokenizer.artifact_path`; WALDO validates and embeds the artifact
 so multi-host training and inference use the same bytes. The resulting artifact
 remains a candidate until domain compression and capability tests approve it.
 
+A model compose can instead declare `architecture.tokenizer.training`. In that
+form, `model forecast` validates the tokenizer recipe without executing it and
+`model train` performs tokenizer sampling, training, vocabulary-size checking,
+and the declared r50k compression gate before model initialization. The
+resolved artifact and its producing recipe are embedded in the immutable model
+architecture before any multi-host training plan is published.
+
 Create a pinned evaluation BOM from a reviewed definition and index selection:
 
 ```yaml

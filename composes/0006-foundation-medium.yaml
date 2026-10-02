@@ -16,7 +16,21 @@ architecture:
   tie_embeddings: true
   parameter_dtype: float32
   tokenizer:
-    artifact_path: tokenizers/foundation-16k.json
+    training:
+      algorithm: bytepiece-v1
+      sample_bytes: 268435456
+      seed: 42
+      max_compression_regression: 0.10
+      distribution_policy: distributable
+      filter:
+        main_content: true
+        exclude:
+          repetitive_content: true
+          boilerplate_content: true
+      corpora:
+        - core/common-pile/wikimedia
+        - core/common-pile/pressbooks
+        - science/plos
 stages:
   - name: foundation-pretrain
     type: pre-training
@@ -56,4 +70,3 @@ stages:
       evaluate_every: 2000
       evaluation_max_records: 1024
       evaluation_max_bytes: 33554432
-

@@ -92,7 +92,7 @@ func (resolver PyTorchResolver) Resolve(ctx context.Context, request ResolveRequ
 	if architecture.Family != "decoder-transformer" {
 		return Selection{}, fmt.Errorf("PyTorch backend does not support architecture family %q", architecture.Family)
 	}
-	if _, _, err := ResolveArchitectureTokenizer(request.Architecture); err != nil {
+	if err := ValidateArchitectureTokenizer(request.Architecture); err != nil {
 		return Selection{}, fmt.Errorf("PyTorch backend: %w", err)
 	}
 	candidates := resolver.Candidates

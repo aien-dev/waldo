@@ -204,9 +204,14 @@ func (builder Builder) Train(ctx context.Context, name string, prepared Prepared
 			return Inspection{}, fmt.Errorf("stage %s %w", stage.Name, err)
 		}
 	}
-	codec, err := training.ResolveTokenizerCodec(inspection.Model.Architecture.Tokenizer.Name)
+	_, codec, err := inspection.Model.Architecture.ResolveTokenizer()
 	if err != nil {
-		return Inspection{}, fmt.Errorf("stage %s tokenizer: %w", stage.Name, err)
+		// Legacy imported and test architectures may carry an opaque revision.
+		// Real backends still validate the exact contract before execution.
+		codec, err = training.ResolveTokenizerCodec(inspection.Model.Architecture.Tokenizer.Name)
+		if err != nil {
+			return Inspection{}, fmt.Errorf("stage %s tokenizer: %w", stage.Name, err)
+		}
 	}
 	conversation := training.ConversationTransform{}
 	if stage.Conversation != nil {
@@ -1313,7 +1318,7 @@ func validateComposeTarget(target Inspection, compose Compose) error {
 }
 
 func validateComposeCompatibility(target Inspection, compose Compose) error {
-	architectureHash, err := canonicalHash(compose.Architecture)
+	architectureHash, err := canonicalHash(composeModelArchitecture(compose.Architecture))
 	if err != nil {
 		return err
 	}
@@ -1624,7 +1629,7 @@ func (builder Builder) Compose(ctx context.Context, name string, compose Compose
 	if err != nil {
 		return Inspection{}, fmt.Errorf("inspect composing model %s: %w", destination, err)
 	}
-	architectureHash, err := canonicalHash(compose.Architecture)
+	architectureHash, err := canonicalHash(composeModelArchitecture(compose.Architecture))
 	if err != nil {
 		return Inspection{}, err
 	}

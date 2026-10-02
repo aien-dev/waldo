@@ -55,6 +55,31 @@ func ResolveArchitectureTokenizer(raw json.RawMessage) (TokenizerSpec, TokenCode
 	return ResolveTokenizerSpec(spec)
 }
 
+// ValidateArchitectureTokenizer accepts a declared compose-time tokenizer
+// training phase during forecasting. Real training requests must carry the
+// resolved embedded artifact and continue through ResolveArchitectureTokenizer.
+func ValidateArchitectureTokenizer(raw json.RawMessage) error {
+	var architecture struct {
+		Tokenizer struct {
+			Artifact *waldoTokenizer.Artifact `json:"artifact,omitempty"`
+			Training *struct {
+				Algorithm string `json:"algorithm"`
+			} `json:"training,omitempty"`
+		} `json:"tokenizer"`
+	}
+	if err := json.Unmarshal(raw, &architecture); err != nil {
+		return err
+	}
+	if architecture.Tokenizer.Artifact == nil && architecture.Tokenizer.Training != nil {
+		if architecture.Tokenizer.Training.Algorithm != "bytepiece-v1" {
+			return fmt.Errorf("unsupported tokenizer training algorithm %q", architecture.Tokenizer.Training.Algorithm)
+		}
+		return nil
+	}
+	_, _, err := ResolveArchitectureTokenizer(raw)
+	return err
+}
+
 // ResolveTokenizerSpec resolves both built-in tokenizers and a content-pinned
 // trained tokenizer embedded in the portable model contract.
 func ResolveTokenizerSpec(spec TokenizerSpec) (TokenizerSpec, TokenCodec, error) {

@@ -52,6 +52,20 @@ func TestResolveTokenizerSpecUsesEmbeddedTrainedArtifact(t *testing.T) {
 	}
 }
 
+func TestValidateArchitectureTokenizerAllowsDeclaredTrainingOnlyForForecast(t *testing.T) {
+	raw := json.RawMessage(`{"vocabulary_size":16000,"tokenizer":{"training":{"algorithm":"bytepiece-v1"}}}`)
+	if err := ValidateArchitectureTokenizer(raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ResolveArchitectureTokenizer(raw); err == nil {
+		t.Fatalf("unresolved execution error = %v", err)
+	}
+	invalid := json.RawMessage(`{"vocabulary_size":16000,"tokenizer":{"training":{"algorithm":"unknown"}}}`)
+	if err := ValidateArchitectureTokenizer(invalid); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("invalid training algorithm error = %v", err)
+	}
+}
+
 func TestCL100KTokenizerRoundTripAndSpecialFraming(t *testing.T) {
 	spec, codec, err := ResolveTokenizer("tiktoken/cl100k_base", TiktokenCL100KRevision, TiktokenCL100KVocabulary)
 	if err != nil {

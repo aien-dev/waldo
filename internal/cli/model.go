@@ -1254,6 +1254,9 @@ func runCompletedComposeNoop(context Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return false, err
 	}
+	if compose.Architecture.HasUnresolvedTokenizerTraining() {
+		return false, nil
+	}
 	builder, err := configuredModelBuilder(context, io.Discard)
 	if err != nil {
 		return false, err
@@ -1325,6 +1328,14 @@ func runModelComposeTrainingWithHandoff(context Context, name, path string, clus
 	if handoff != nil {
 		builder.MultiNode = *handoff
 	}
+	cache, err := lookaside.DefaultCache()
+	if err != nil {
+		return err
+	}
+	compose, err = resolveComposeTokenizerTraining(context, compose, cache, stderr)
+	if err != nil {
+		return err
+	}
 	compose, err = builder.ResolveCompose(context.Execution, compose, true)
 	if err != nil {
 		return err
@@ -1379,10 +1390,6 @@ func runModelComposeTrainingWithHandoff(context Context, name, path string, clus
 		}
 	}
 	if err := builder.CheckBackend(context.Execution, compose.Architecture, objectives); err != nil {
-		return err
-	}
-	cache, err := lookaside.DefaultCache()
-	if err != nil {
 		return err
 	}
 	builder.PreparedCacheDirectory = filepath.Join(cache.Scratch(), "prepared")

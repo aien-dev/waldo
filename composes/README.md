@@ -21,41 +21,30 @@ The new ladder separates four questions:
 There is no conversation tuning in this ladder. A small-model failure stops the
 experiment; it is not repaired with instruction data.
 
-## Gate 0: train and review the tokenizer
+## Tokenizer phase
 
-Pull the commit containing this ladder, then run on rank 0:
+Every compose declares tokenizer training as part of the model recipe. Before
+creating the model, WALDO resolves the pinned corpus BOM, takes a deterministic
+balanced 256 MiB sample, trains exactly 16,000 entries, compares compression
+with r50k, and embeds the resulting content-addressed artifact in the immutable
+architecture. The compose fails before model initialization if the candidate is
+more than 10% worse than r50k. Rank 0 performs this phase before distributing
+the resolved architecture to other hosts.
 
-```console
-mkdir -p composes/tokenizers
-go run ./cmd/waldo/ model train-tokenizer \
-  core/common-pile/wikimedia \
-  core/common-pile/pressbooks \
-  science/plos \
-  --vocabulary-size 16000 \
-  --sample-bytes 268435456 \
-  --output composes/tokenizers/foundation-16k.json
-```
-
-The command samples the three corpus paths evenly, regardless of their later
-training weights. Stop if it does not produce exactly 16,000 tokens, if the
-artifact fails validation, or if its reported bytes/token is more than 10%
-worse than r50k on the same sample. Preserve the complete output. Once accepted,
-commit `composes/tokenizers/foundation-16k.json`; it is part of the model.
-
-The compose files use `.yaml.tmpl` only because the content-addressed tokenizer
-does not exist in Git yet. They are directly runnable after Gate 0; no rendering
-or substitution is required.
+`model forecast` validates and sizes the declared tokenizer phase without
+downloading or training it. `model train` executes it. No external tokenizer
+command, generated compose, or machine-local artifact path is required.
 
 ## Rungs
 
 | Gate | Compose | Approx. size | Tokens | Purpose |
 | --- | --- | ---: | ---: | --- |
-| 1 | `0001-foundation-pipeline-canary.yaml.tmpl` | 7.3M | 10M | Trained-tokenizer, training, checkpoint, publication, and inference smoke test |
-| 2 | `0002-foundation-mixture-canary.yaml.tmpl` | 7.3M | 50M | Exact 5:2:1 weighted-stream accounting |
-| 3 | `0003-foundation-small-language.yaml.tmpl` | 76.6M | 760M | Language diagnostic using only Wikimedia and PressBooks |
-| 4 | `0004-foundation-small-general.yaml.tmpl` | 76.6M | 1.5B | General-mixture diagnostic; not a useful-assistant claim |
-| 5 | `0005-foundation-medium-pilot.yaml.tmpl` | 297.2M | 3.0B | First general-capability pilot |
-| 6 | `0006-foundation-medium.yaml.tmpl` | 297.2M | 6.0B | General-foundation qualification |
+| 1 | `0001-foundation-pipeline-canary.yaml` | 7.3M | 10M | Tokenizer, training, checkpoint, publication, and inference smoke test |
+| 2 | `0002-foundation-mixture-canary.yaml` | 7.3M | 50M | Exact 5:2:1 weighted-stream accounting |
+| 3 | `0003-foundation-small-language.yaml` | 76.6M | 760M | Language diagnostic using only Wikimedia and PressBooks |
+| 4 | `0004-foundation-small-general.yaml` | 76.6M | 1.5B | General-mixture diagnostic; not a useful-assistant claim |
+| 5 | `0005-foundation-medium-pilot.yaml` | 297.2M | 3.0B | First general-capability pilot |
+| 6 | `0006-foundation-medium.yaml` | 297.2M | 6.0B | General-foundation qualification |
 
 The 76.6M architecture allocates 10.2M parameters (13.4%) to tied token
 embeddings. The 297.2M architecture allocates 18.4M (6.2%). Gate 3 deliberately
@@ -75,14 +64,14 @@ before adding the scientific domain. Gates 2, 4, 5, and 6 use 62.5% Wikimedia,
 
 ## Run procedure
 
-After Gate 0, start only Gate 1:
+Start only Gate 1:
 
 ```console
 go run ./cmd/waldo/ model forecast \
-  composes/0001-foundation-pipeline-canary.yaml.tmpl
+  composes/0001-foundation-pipeline-canary.yaml
 
 go run ./cmd/waldo/ model train foundation-pipeline-canary-01 \
-  composes/0001-foundation-pipeline-canary.yaml.tmpl \
+  composes/0001-foundation-pipeline-canary.yaml \
   --hostfile ~/hostfile
 ```
 

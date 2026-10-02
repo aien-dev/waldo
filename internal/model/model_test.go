@@ -128,6 +128,83 @@ func TestLoadComposeEmbedsTrainedTokenizerArtifact(t *testing.T) {
 	}
 }
 
+func TestLoadComposeAcceptsDeclarativeTokenizerTraining(t *testing.T) {
+	document := strings.Replace(composeYAML(""), "vocabulary_size: 256", "vocabulary_size: 16000", 1)
+	document = strings.Replace(document, "tokenizer:\n    name: byte\n    revision: sha256:example", `tokenizer:
+    training:
+      algorithm: bytepiece-v1
+      sample_bytes: 268435456
+      seed: 42
+      max_compression_regression: 0.10
+      distribution_policy: distributable
+      corpora:
+        - core/books
+        - science/papers`, 1)
+	path := filepath.Join(t.TempDir(), "compose.yaml")
+	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	compose, _, err := LoadCompose(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !compose.Architecture.HasUnresolvedTokenizerTraining() || compose.Architecture.Tokenizer.Training.Algorithm != TokenizerAlgorithmBytepieceV1 {
+		t.Fatalf("tokenizer declaration = %+v", compose.Architecture.Tokenizer)
+	}
+	forecast, err := ForecastCompose(compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forecast.ApproximateParameters == 0 || forecast.PlannedTokens == 0 {
+		t.Fatalf("forecast = %+v", forecast)
+	}
+
+	one := uint64(1)
+	compose.Architecture.Tokenizer.Training.Corpora[0].Weight = &one
+	if err := compose.Validate(); err == nil || !strings.Contains(err.Error(), "sampling is balanced") {
+		t.Fatalf("weighted tokenizer corpus error = %v", err)
+	}
+}
+
+func TestResolvedTokenizerTrainingIsRecipeEvidenceNotModelStructure(t *testing.T) {
+	artifact, err := waldotokenizer.TrainBytepiece(
+		[]waldotokenizer.Sample{{ID: "one", Text: "portable tokenizer sample"}},
+		300,
+		1024,
+		strings.Repeat("a", 64),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compose := validCompose()
+	compose.Architecture.VocabularySize = uint64(artifact.VocabularySize)
+	compose.Architecture.Tokenizer = Tokenizer{
+		Name: artifact.Name, Revision: artifact.Revision, Artifact: &artifact,
+		Training: &TokenizerTraining{
+			Algorithm: TokenizerAlgorithmBytepieceV1, SampleBytes: 1024, Seed: 42,
+			MaxCompressionRegression: 0.1, DistributionPolicy: corpus.DistributionPolicyDistributable,
+			Corpora: NewCorpusSelections([]string{"example"}),
+		},
+	}
+	if err := compose.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := composePlan("example", compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Architecture.Tokenizer.Training != nil || plan.Architecture.Tokenizer.Artifact == nil {
+		t.Fatalf("planned tokenizer = %+v", plan.Architecture.Tokenizer)
+	}
+	wantHash, err := canonicalHash(plan.Architecture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ArchitectureSHA256 != wantHash {
+		t.Fatalf("architecture hash = %s, want %s", plan.ArchitectureSHA256, wantHash)
+	}
+}
+
 func TestLoadComposeExplainsMissingAndEmptyFiles(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing.yaml")
 	if _, _, err := LoadCompose(missing); err == nil || !strings.Contains(err.Error(), "model compose") || !strings.Contains(err.Error(), "does not exist") {

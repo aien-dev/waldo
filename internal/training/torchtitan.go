@@ -434,7 +434,7 @@ func validateTorchArchitecture(raw json.RawMessage, label string) error {
 	if architecture.Family != "decoder-transformer" {
 		return fmt.Errorf("%s backend does not support architecture family %q", label, architecture.Family)
 	}
-	if _, _, err := ResolveArchitectureTokenizer(raw); err != nil {
+	if err := ValidateArchitectureTokenizer(raw); err != nil {
 		return fmt.Errorf("%s backend: %w", label, err)
 	}
 	return nil

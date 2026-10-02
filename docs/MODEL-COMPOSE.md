@@ -307,6 +307,7 @@ compatibility boundary.
 | `tokenizer.revision` | yes for built-ins | immutable revision | Pins exact tokenizer behavior. It is populated from a trained artifact when `artifact_path` is used. |
 | `tokenizer.artifact_path` | trained tokenizer only | path | Loads a `waldo-trained-tokenizer` artifact relative to the compose, validates it, and embeds it in the immutable model contract. |
 | `tokenizer.artifact` (`artifact`) | resolved form only | object | Content-pinned trained tokenizer embedded by WALDO in saved compose, run-plan, and model artifacts. Authors should use `artifact_path` rather than inline this object. |
+| `tokenizer.training` | compose-trained tokenizer only | object | Declares a tokenizer phase that runs before model initialization. The resolved artifact is embedded in the immutable architecture and distributed to every worker. |
 
 The architecture determines the model parameter count. WALDO derives and
 reports that count in forecasts and model summaries; it is not an independent
@@ -327,6 +328,30 @@ WALDO performs tokenization before the framework worker, ensuring supported
 backends receive identical token IDs. A trained artifact is expanded into the
 saved architecture, so secondary hosts and later inference do not depend on a
 machine-local tokenizer path.
+
+### Tokenizer training fields
+
+`tokenizer.training` makes tokenizer creation part of the same model compose:
+
+| Field | Required | Value | Meaning |
+| --- | --- | --- | --- |
+| `algorithm` | yes | `bytepiece-v1` | Deterministic byte-fallback lexical-piece trainer. |
+| `sample_bytes` | yes | positive integer | Maximum admitted bytes sampled evenly across selected corpus paths. |
+| `seed` | yes | unsigned integer | Pins balanced record ordering. |
+| `max_compression_regression` | no | `0..1`; default `0` | Maximum permitted fractional bytes/token regression relative to r50k on the identical sample. |
+| `distribution_policy` | yes | `distributable` | Requires the tokenizer corpus BOM to pass the strict distribution review. |
+| `filter` | no | record filter | Global record filter for tokenizer training. |
+| `corpora` | yes | non-empty unique corpus selections | Corpus paths sampled evenly. Weights are rejected because tokenizer sampling is balanced. |
+
+The architecture's `vocabulary_size` is the requested and required artifact
+size. Forecast validates this declaration without acquiring corpus objects.
+Training resolves the corpus BOM, trains and checks the tokenizer on rank 0,
+then persists model identity and launches model stages. A compose may instead
+select a previously trained artifact with `artifact_path`, but it cannot combine
+`artifact_path` and `training`. The resolved compose records the tokenizer
+corpus BOM as `corpus_bom`; model architecture identity contains the resulting
+artifact but excludes the producing recipe, so regenerated declarative YAML
+does not change model structure.
 
 ## Stage fields
 

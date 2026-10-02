@@ -29,6 +29,13 @@ adopts it through `tokenizer.artifact_path`. Compose loading validates the
 artifact and embeds its complete content in the immutable model architecture,
 run plan, and emitted tokenizer artifact.
 
+A model compose may also declare `architecture.tokenizer.training`. This is a
+pre-model compose phase: forecast validates it without materialization, while
+training resolves the pinned corpus BOM, creates the artifact on rank 0,
+enforces the declared compression bound, and only then persists model identity
+or distributes a multi-host plan. The resolved architecture retains both the
+training declaration and resulting artifact.
+
 ## Consequences
 
 - Tokenizer training is bounded by `--sample-bytes` and does not perform tens
