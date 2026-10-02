@@ -21,6 +21,7 @@ var foundationFiles = []string{
 	"0001-foundation-pipeline-canary.yaml",
 	"0002-foundation-mixture-canary.yaml",
 	"0003-foundation-small-language.yaml",
+	"0003b-foundation-small-language-full.yaml",
 	"0004-foundation-small-general.yaml",
 	"0005-foundation-medium-pilot.yaml",
 	"0006-foundation-medium.yaml",
@@ -100,6 +101,7 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		{7244032, 50003968},
 		{76615040, 760020992},
 		{76615040, 1500053504},
+		{76615040, 1500053504},
 		{297171072, 3000107008},
 		{297171072, 6000082944},
 	}
@@ -142,7 +144,7 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 		if file == foundationFiles[0] {
 			wantCorpora = []string{"core/common-pile/pressbooks"}
 			wantWeights = []uint64{1}
-		} else if file == foundationFiles[2] {
+		} else if file == foundationFiles[2] || file == foundationFiles[3] {
 			wantCorpora = []string{"core/common-pile/wikimedia", "core/common-pile/pressbooks"}
 			wantWeights = []uint64{1, 1}
 		}
@@ -172,10 +174,14 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 }
 
 func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
-	mediumPilot := loadCompose(t, foundationFiles[4])
-	medium := loadCompose(t, foundationFiles[5])
+	mediumPilot := loadCompose(t, foundationFiles[5])
+	medium := loadCompose(t, foundationFiles[6])
 	smallLanguage := loadCompose(t, foundationFiles[2])
-	smallGeneral := loadCompose(t, foundationFiles[3])
+	smallLanguageFull := loadCompose(t, foundationFiles[3])
+	smallGeneral := loadCompose(t, foundationFiles[4])
+	if !reflect.DeepEqual(smallLanguage.Architecture, smallLanguageFull.Architecture) {
+		t.Fatal("small language diagnostic architectures differ")
+	}
 	if !reflect.DeepEqual(smallLanguage.Architecture, smallGeneral.Architecture) {
 		t.Fatal("small pilot and qualification architectures differ")
 	}
@@ -184,6 +190,24 @@ func TestPilotAndQualificationPairsKeepArchitecture(t *testing.T) {
 	}
 	if !reflect.DeepEqual(mediumPilot.Stages[0].Corpora, medium.Stages[0].Corpora) {
 		t.Fatal("medium pilot and qualification corpus recipes differ")
+	}
+}
+
+func TestSmallLanguageFullChangesOnlyTrainingHorizon(t *testing.T) {
+	short := loadCompose(t, foundationFiles[2])
+	full := loadCompose(t, foundationFiles[3])
+	if !reflect.DeepEqual(short.Architecture, full.Architecture) || !reflect.DeepEqual(short.Stages[0].Corpora, full.Stages[0].Corpora) || !reflect.DeepEqual(short.Stages[0].Filter, full.Stages[0].Filter) {
+		t.Fatal("Gate 3B changed architecture or data recipe")
+	}
+	shortParameters := short.Stages[0].Parameters
+	fullParameters := full.Stages[0].Parameters
+	shortParameters.Tokens, fullParameters.Tokens = 0, 0
+	shortParameters.WarmupSteps, fullParameters.WarmupSteps = nil, nil
+	shortParameters.WarmdownSteps, fullParameters.WarmdownSteps = nil, nil
+	shortParameters.CheckpointEvery, fullParameters.CheckpointEvery = nil, nil
+	shortParameters.EvaluateEvery, fullParameters.EvaluateEvery = nil, nil
+	if !reflect.DeepEqual(shortParameters, fullParameters) {
+		t.Fatalf("Gate 3B changed controls beyond the training horizon: short=%+v full=%+v", shortParameters, fullParameters)
 	}
 }
 

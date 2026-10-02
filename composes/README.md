@@ -44,6 +44,7 @@ command, generated compose, or machine-local artifact path is required.
 | 1 | `0001-foundation-pipeline-canary.yaml` | 7.3M | 10M | Tokenizer, training, checkpoint, publication, and inference smoke test |
 | 2 | `0002-foundation-mixture-canary.yaml` | 7.3M | 50M | Exact 5:2:1 weighted-stream accounting |
 | 3 | `0003-foundation-small-language.yaml` | 76.6M | 760M | Language diagnostic using only Wikimedia and PressBooks |
+| 3B | `0003b-foundation-small-language-full.yaml` | 76.6M | 1.5B | Controlled prose-only repeat near 20 tokens per parameter |
 | 4 | `0004-foundation-small-general.yaml` | 76.6M | 1.5B | General-mixture diagnostic; not a useful-assistant claim |
 | 5 | `0005-foundation-medium-pilot.yaml` | 297.2M | 3.0B | First general-capability pilot |
 | 6 | `0006-foundation-medium.yaml` | 297.2M | 6.0B | General-foundation qualification |
@@ -51,8 +52,47 @@ command, generated compose, or machine-local artifact path is required.
 The 76.6M architecture allocates 10.2M parameters (13.4%) to tied token
 embeddings. The 297.2M architecture allocates 18.4M (6.2%). Gate 3 deliberately
 removes PLOS and uses a 1:1 Wikimedia/PressBooks stream to test ordinary prose
-before adding the scientific domain. Gates 2, 4, 5, and 6 use 62.5% Wikimedia,
-25% PressBooks, and 12.5% PLOS.
+before adding the scientific domain. Gate 3B preserves that exact architecture
+and data recipe; only the token horizon and its proportional scheduler and
+observation intervals change. Gates 2, 4, 5, and 6 use 62.5% Wikimedia, 25%
+PressBooks, and 12.5% PLOS.
+
+## Interpreting tokens per parameter
+
+The approximately 20-token target comes from compute-optimal scaling, not from
+a universal capability threshold. Hoffmann et al.'s Chinchilla experiments
+scaled parameters and training tokens approximately equally under a fixed
+training-compute budget; their selected 70B model used 1.4T tokens, or about 20
+tokens per parameter. Their experiments included models down to roughly 70M
+parameters, making 20 a defensible first full-budget checkpoint for this
+ladder. See [Training Compute-Optimal Large Language
+Models](https://arxiv.org/abs/2203.15556).
+
+The ratio remains an approximation. DeepSeek's scaling study found that total
+or non-embedding parameter count can misrepresent actual per-token compute,
+with especially large discrepancies for small models, and recommends fitting
+against non-embedding FLOPs per token. Data quality also changes the optimum.
+See [DeepSeek LLM](https://arxiv.org/abs/2401.02954). If data must repeat,
+controlled experiments indicate that up to four epochs can have negligible
+loss impact compared with unique data, after which marginal value eventually
+decays. See [Scaling Data-Constrained Language
+Models](https://arxiv.org/abs/2305.16264).
+
+For this exact 76,615,040-parameter architecture, Gate 3 consumed 760,020,992
+tokens (9.92 tokens/parameter). It reached held-out loss 2.9694 and passed the
+grammaticality, first-sentence relevance, and sampled-generation checks, but
+all 15 deterministic continuations repeated. Gate 3B requests 1,500,000,000
+tokens and will consume 1,500,053,504 after batch rounding, or 19.58
+tokens/parameter. This tests the undertraining hypothesis without introducing
+PLOS or changing model capacity.
+
+WALDO therefore treats 20 as a measurement point, not a promotion reason. We
+strive for improving held-out loss and fixed-prompt quality together, no
+repetition regression, exact data accounting, and better capability per FLOP.
+If Gate 3B still repeats, the next experiment must investigate architecture,
+data, optimization, or decoding rather than automatically adding more tokens.
+When comparing different tokenizers, use a source-byte-normalized metric such
+as bits per byte instead of raw token loss.
 
 ## Rules
 
@@ -139,6 +179,18 @@ scores.
 - At least 8/15 avoid repetition failure.
 - At least 3/4 sampled probes remain relevant and avoid repetition.
 - No factual-score threshold applies.
+
+### Gate 3B: full-budget small language diagnostic
+
+- Gate 3 grammaticality, relevance, repetition, and sampled-output thresholds
+  all apply unchanged.
+- It must improve deterministic repetition over Gate 3 while held-out loss
+  remains finite and improves; the 19.58 tokens-per-parameter ratio alone is
+  not a pass.
+- Wikimedia and PressBooks exposure remains within 0.5 percentage points of
+  50% each.
+- Passing authorizes Gate 4. Failure stops the ladder for a new controlled
+  diagnosis rather than adding the PLOS variable.
 
 ### Gate 4: small general diagnostic
 
