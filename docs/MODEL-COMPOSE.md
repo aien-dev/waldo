@@ -322,7 +322,8 @@ The tokenizer name, revision, and vocabulary size are one exact contract:
 | `byte` | `builtin-byte-schema-1` | 259 | Legacy and very small byte-token models. |
 | `tiktoken/r50k_base` | `tiktoken-r50k-base` | 50259 | Compact English-oriented subword models. |
 | `tiktoken/cl100k_base` | `tiktoken-cl100k-base` | 100259 | Larger multilingual and code-capable subword vocabulary. |
-| `waldo/bytepiece` | artifact revision | artifact vocabulary | Corpus-trained byte-fallback vocabulary selected with `tokenizer.artifact_path`. |
+| `waldo/byte-bpe` | artifact revision | artifact vocabulary | Corpus-trained byte-level BPE vocabulary selected with `tokenizer.artifact_path`. |
+| `waldo/bytepiece` | artifact revision | artifact vocabulary | Read-only compatibility for schema-1 artifacts; new training never creates this format. |
 
 WALDO performs tokenization before the framework worker, ensuring supported
 backends receive identical token IDs. A trained artifact is expanded into the
@@ -335,10 +336,10 @@ machine-local tokenizer path.
 
 | Field | Required | Value | Meaning |
 | --- | --- | --- | --- |
-| `algorithm` | yes | `bytepiece-v1` | Deterministic byte-fallback lexical-piece trainer. |
+| `algorithm` | yes | `byte-bpe-v1` | Deterministic byte-level BPE trainer with all 256 bytes as fallback tokens. |
 | `sample_bytes` | yes | positive integer | Maximum admitted bytes sampled evenly across selected corpus paths. |
 | `seed` | yes | unsigned integer | Pins balanced record ordering. |
-| `max_compression_regression` | no | `0..1`; default `0` | Maximum permitted fractional bytes/token regression relative to r50k on the identical sample. |
+| `max_token_inflation` | no | `0..1`; default `0` | Maximum permitted fractional increase in candidate token count relative to r50k on the identical sample. |
 | `distribution_policy` | yes | `distributable` | Requires the tokenizer corpus BOM to pass the strict distribution review. |
 | `filter` | no | record filter | Global record filter for tokenizer training. |
 | `corpora` | yes | non-empty unique corpus selections | Corpus paths sampled evenly. Weights are rejected because tokenizer sampling is balanced. |

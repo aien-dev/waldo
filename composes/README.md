@@ -25,11 +25,13 @@ experiment; it is not repaired with instruction data.
 
 Every compose declares tokenizer training as part of the model recipe. Before
 creating the model, WALDO resolves the pinned corpus BOM, takes a deterministic
-balanced 256 MiB sample, trains exactly 16,000 entries, compares compression
-with r50k, and embeds the resulting content-addressed artifact in the immutable
-architecture. The compose fails before model initialization if the candidate is
-more than 10% worse than r50k. Rank 0 performs this phase before distributing
-the resolved architecture to other hosts.
+balanced 256 MiB sample, trains exactly 16,000 byte-level BPE entries, compares
+token counts with r50k on that same sample, and embeds the resulting
+content-addressed artifact in the immutable architecture. The compose fails
+before model initialization if the candidate uses more than 35% additional
+tokens. This is an explicit source-token compute bound, not a claim that a 16K
+vocabulary should compress within 10% of r50k's 50K vocabulary. Rank 0 performs
+this phase before distributing the resolved architecture to other hosts.
 
 `model forecast` validates and sizes the declared tokenizer phase without
 downloading or training it. `model train` executes it. No external tokenizer

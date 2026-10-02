@@ -627,16 +627,17 @@ waldo model train-tokenizer core/common-pile/wikimedia \
 ```
 
 The command requires every selected corpus to pass the distributable gate,
-pins the complete corpus BOM and deterministic balanced sample identity, and
-reports bytes per token beside `r50k_base`. Select an approved candidate from a
-compose with `tokenizer.artifact_path`; WALDO validates and embeds the artifact
-so multi-host training and inference use the same bytes. The resulting artifact
-remains a candidate until domain compression and capability tests approve it.
+pins the complete corpus BOM and deterministic balanced sample identity,
+trains ordered byte-level BPE merges, and reports bytes per token beside
+`r50k_base`. Select an approved candidate from a compose with
+`tokenizer.artifact_path`; WALDO validates and embeds the artifact so multi-host
+training and inference use the same bytes. The resulting artifact remains a
+candidate until domain compression and capability tests approve it.
 
 A model compose can instead declare `architecture.tokenizer.training`. In that
 form, `model forecast` validates the tokenizer recipe without executing it and
 `model train` performs tokenizer sampling, training, vocabulary-size checking,
-and the declared r50k compression gate before model initialization. The
+and the declared r50k token-inflation gate before model initialization. The
 resolved artifact and its producing recipe are embedded in the immutable model
 architecture before any multi-host training plan is published.
 

@@ -22,7 +22,7 @@ import (
 )
 
 func TestLoadTokenizerUsesEmbeddedTrainedArtifact(t *testing.T) {
-	artifact, err := waldotokenizer.TrainBytepiece(
+	artifact, err := waldotokenizer.TrainByteBPE(
 		[]waldotokenizer.Sample{{ID: "one", Text: "portable tokenizer sample"}},
 		300,
 		1024,

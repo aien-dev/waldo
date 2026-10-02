@@ -74,7 +74,7 @@ func TestLoadComposeIsStrictAndKeepsIndexPathsLogical(t *testing.T) {
 
 func TestLoadComposeEmbedsTrainedTokenizerArtifact(t *testing.T) {
 	directory := t.TempDir()
-	artifact, err := waldotokenizer.TrainBytepiece(
+	artifact, err := waldotokenizer.TrainByteBPE(
 		[]waldotokenizer.Sample{{ID: "one", Text: "small deterministic tokenizer sample"}},
 		300,
 		1024,
@@ -132,10 +132,10 @@ func TestLoadComposeAcceptsDeclarativeTokenizerTraining(t *testing.T) {
 	document := strings.Replace(composeYAML(""), "vocabulary_size: 256", "vocabulary_size: 16000", 1)
 	document = strings.Replace(document, "tokenizer:\n    name: byte\n    revision: sha256:example", `tokenizer:
     training:
-      algorithm: bytepiece-v1
+      algorithm: byte-bpe-v1
       sample_bytes: 268435456
       seed: 42
-      max_compression_regression: 0.10
+      max_token_inflation: 0.10
       distribution_policy: distributable
       corpora:
         - core/books
@@ -148,7 +148,7 @@ func TestLoadComposeAcceptsDeclarativeTokenizerTraining(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !compose.Architecture.HasUnresolvedTokenizerTraining() || compose.Architecture.Tokenizer.Training.Algorithm != TokenizerAlgorithmBytepieceV1 {
+	if !compose.Architecture.HasUnresolvedTokenizerTraining() || compose.Architecture.Tokenizer.Training.Algorithm != TokenizerAlgorithmByteBPEV1 {
 		t.Fatalf("tokenizer declaration = %+v", compose.Architecture.Tokenizer)
 	}
 	forecast, err := ForecastCompose(compose)
@@ -167,7 +167,7 @@ func TestLoadComposeAcceptsDeclarativeTokenizerTraining(t *testing.T) {
 }
 
 func TestResolvedTokenizerTrainingIsRecipeEvidenceNotModelStructure(t *testing.T) {
-	artifact, err := waldotokenizer.TrainBytepiece(
+	artifact, err := waldotokenizer.TrainByteBPE(
 		[]waldotokenizer.Sample{{ID: "one", Text: "portable tokenizer sample"}},
 		300,
 		1024,
@@ -181,8 +181,8 @@ func TestResolvedTokenizerTrainingIsRecipeEvidenceNotModelStructure(t *testing.T
 	compose.Architecture.Tokenizer = Tokenizer{
 		Name: artifact.Name, Revision: artifact.Revision, Artifact: &artifact,
 		Training: &TokenizerTraining{
-			Algorithm: TokenizerAlgorithmBytepieceV1, SampleBytes: 1024, Seed: 42,
-			MaxCompressionRegression: 0.1, DistributionPolicy: corpus.DistributionPolicyDistributable,
+			Algorithm: TokenizerAlgorithmByteBPEV1, SampleBytes: 1024, Seed: 42,
+			MaxTokenInflation: 0.1, DistributionPolicy: corpus.DistributionPolicyDistributable,
 			Corpora: NewCorpusSelections([]string{"example"}),
 		},
 	}

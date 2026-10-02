@@ -157,7 +157,7 @@ func trainTokenizerArtifact(execution stdcontext.Context, bom corpus.BOM, cache 
 	if err != nil && !errors.Is(err, errTokenizerSampleComplete) {
 		return tokenizerTrainingResult{}, err
 	}
-	artifact, err := waldotokenizer.TrainBytepiece(samples, vocabularySize, sampleBytes, bomSHA256)
+	artifact, err := waldotokenizer.TrainByteBPE(samples, vocabularySize, sampleBytes, bomSHA256)
 	if err != nil {
 		return tokenizerTrainingResult{}, err
 	}
@@ -211,9 +211,11 @@ func resolveComposeTokenizerTraining(context Context, compose model.Compose, cac
 	for _, comparison := range result.Compression {
 		fmt.Fprintf(progress, "tokenizer               %-32s %.3f bytes/token (%s tokens)\n", comparison.Tokenizer, comparison.BytesPerToken, humanCount(comparison.Tokens))
 	}
-	if err := validateTokenizerCompression(result.Compression, declaration.MaxCompressionRegression); err != nil {
+	if err := validateTokenizerCompression(result.Compression, declaration.MaxTokenInflation); err != nil {
 		return model.Compose{}, err
 	}
+	inflation := float64(result.Compression[1].Tokens)/float64(result.Compression[0].Tokens) - 1
+	fmt.Fprintf(progress, "tokenizer               token inflation vs r50k %.1f%% (limit %.1f%%)\n", inflation*100, declaration.MaxTokenInflation*100)
 	compose.Architecture.Tokenizer.Name = result.Artifact.Name
 	compose.Architecture.Tokenizer.Revision = result.Artifact.Revision
 	compose.Architecture.Tokenizer.Artifact = &result.Artifact
@@ -225,16 +227,18 @@ func resolveComposeTokenizerTraining(context Context, compose model.Compose, cac
 	return compose, nil
 }
 
-func validateTokenizerCompression(comparisons []waldotokenizer.Comparison, maximumRegression float64) error {
+func validateTokenizerCompression(comparisons []waldotokenizer.Comparison, maximumInflation float64) error {
 	if len(comparisons) != 2 {
 		return fmt.Errorf("tokenizer compression gate requires baseline and candidate measurements")
 	}
 	baseline, candidate := comparisons[0], comparisons[1]
-	// More bytes per token is better compression, so the permitted regression
-	// is a lower bound relative to the r50k baseline.
-	minimum := baseline.BytesPerToken * (1 - maximumRegression)
-	if candidate.BytesPerToken < minimum {
-		return fmt.Errorf("trained tokenizer compression %.3f bytes/token is worse than r50k %.3f by more than %.1f%%", candidate.BytesPerToken, baseline.BytesPerToken, maximumRegression*100)
+	if baseline.Tokens < 1 || candidate.Tokens < 1 {
+		return fmt.Errorf("tokenizer compression gate requires non-empty measurements")
+	}
+	inflation := float64(candidate.Tokens)/float64(baseline.Tokens) - 1
+	maximumTokens := float64(baseline.Tokens) * (1 + maximumInflation)
+	if float64(candidate.Tokens) > maximumTokens+1e-9 {
+		return fmt.Errorf("trained tokenizer uses %.1f%% more tokens than r50k; compose permits at most %.1f%% (%.3f vs %.3f bytes/token)", inflation*100, maximumInflation*100, candidate.BytesPerToken, baseline.BytesPerToken)
 	}
 	return nil
 }

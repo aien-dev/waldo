@@ -147,19 +147,19 @@ type Tokenizer struct {
 	Training     *TokenizerTraining       `json:"training,omitempty" yaml:"training,omitempty"`
 }
 
-const TokenizerAlgorithmBytepieceV1 = "bytepiece-v1"
+const TokenizerAlgorithmByteBPEV1 = "byte-bpe-v1"
 
 // TokenizerTraining declares the deterministic compose phase that creates a
 // tokenizer before the immutable model architecture is persisted.
 type TokenizerTraining struct {
-	Algorithm                string               `json:"algorithm" yaml:"algorithm"`
-	SampleBytes              int64                `json:"sample_bytes" yaml:"sample_bytes"`
-	Seed                     uint64               `json:"seed" yaml:"seed"`
-	MaxCompressionRegression float64              `json:"max_compression_regression" yaml:"max_compression_regression"`
-	DistributionPolicy       string               `json:"distribution_policy" yaml:"distribution_policy"`
-	Filter                   *corpus.RecordFilter `json:"filter,omitempty" yaml:"filter,omitempty"`
-	Corpora                  []CorpusSelection    `json:"corpora" yaml:"corpora"`
-	CorpusBOM                *corpus.BOM          `json:"corpus_bom,omitempty" yaml:"-"`
+	Algorithm          string               `json:"algorithm" yaml:"algorithm"`
+	SampleBytes        int64                `json:"sample_bytes" yaml:"sample_bytes"`
+	Seed               uint64               `json:"seed" yaml:"seed"`
+	MaxTokenInflation  float64              `json:"max_token_inflation" yaml:"max_token_inflation"`
+	DistributionPolicy string               `json:"distribution_policy" yaml:"distribution_policy"`
+	Filter             *corpus.RecordFilter `json:"filter,omitempty" yaml:"filter,omitempty"`
+	Corpora            []CorpusSelection    `json:"corpora" yaml:"corpora"`
+	CorpusBOM          *corpus.BOM          `json:"corpus_bom,omitempty" yaml:"-"`
 }
 
 type Stage struct {
@@ -701,7 +701,7 @@ func (architecture Architecture) Validate() error {
 	if architecture.Tokenizer.ArtifactPath != "" {
 		return fmt.Errorf("tokenizer artifact_path must be resolved before architecture validation")
 	}
-	if architecture.Tokenizer.Name == waldotokenizer.TrainedName || architecture.Tokenizer.Artifact != nil {
+	if waldotokenizer.IsTrainedName(architecture.Tokenizer.Name) || architecture.Tokenizer.Artifact != nil {
 		if _, _, err := architecture.ResolveTokenizer(); err != nil {
 			return err
 		}
@@ -718,7 +718,7 @@ func (tokenizer Tokenizer) validate(vocabularySize uint64) error {
 		return nil
 	}
 	training := tokenizer.Training
-	if training.Algorithm != TokenizerAlgorithmBytepieceV1 {
+	if training.Algorithm != TokenizerAlgorithmByteBPEV1 {
 		return fmt.Errorf("unsupported tokenizer training algorithm %q", training.Algorithm)
 	}
 	if vocabularySize < 259 || vocabularySize > 100_000 {
@@ -727,8 +727,8 @@ func (tokenizer Tokenizer) validate(vocabularySize uint64) error {
 	if training.SampleBytes < 1 {
 		return fmt.Errorf("tokenizer training sample_bytes must be positive")
 	}
-	if training.MaxCompressionRegression < 0 || training.MaxCompressionRegression > 1 || math.IsNaN(training.MaxCompressionRegression) || math.IsInf(training.MaxCompressionRegression, 0) {
-		return fmt.Errorf("tokenizer training max_compression_regression must be finite and in 0..1")
+	if training.MaxTokenInflation < 0 || training.MaxTokenInflation > 1 || math.IsNaN(training.MaxTokenInflation) || math.IsInf(training.MaxTokenInflation, 0) {
+		return fmt.Errorf("tokenizer training max_token_inflation must be finite and in 0..1")
 	}
 	if training.DistributionPolicy != corpus.DistributionPolicyDistributable {
 		return fmt.Errorf("tokenizer training distribution_policy must be %q", corpus.DistributionPolicyDistributable)

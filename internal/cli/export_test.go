@@ -120,7 +120,7 @@ schema: 1
 architecture:
   family: decoder-transformer
   context_tokens: 128
-  vocabulary_size: 259
+  vocabulary_size: 274
   hidden_size: 64
   intermediate_size: 192
   layers: 2
@@ -130,10 +130,10 @@ architecture:
   parameter_dtype: float32
   tokenizer:
     training:
-      algorithm: bytepiece-v1
+      algorithm: byte-bpe-v1
       sample_bytes: 18
       seed: 7
-      max_compression_regression: 1.0
+      max_token_inflation: 1.0
       distribution_policy: distributable
       corpora:
         - books

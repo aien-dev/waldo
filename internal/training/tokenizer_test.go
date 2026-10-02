@@ -16,7 +16,7 @@ import (
 )
 
 func TestResolveTokenizerSpecUsesEmbeddedTrainedArtifact(t *testing.T) {
-	artifact, err := waldotokenizer.TrainBytepiece(
+	artifact, err := waldotokenizer.TrainByteBPE(
 		[]waldotokenizer.Sample{{ID: "one", Text: "hello hello world"}},
 		300,
 		1024,
@@ -53,7 +53,7 @@ func TestResolveTokenizerSpecUsesEmbeddedTrainedArtifact(t *testing.T) {
 }
 
 func TestValidateArchitectureTokenizerAllowsDeclaredTrainingOnlyForForecast(t *testing.T) {
-	raw := json.RawMessage(`{"vocabulary_size":16000,"tokenizer":{"training":{"algorithm":"bytepiece-v1"}}}`)
+	raw := json.RawMessage(`{"vocabulary_size":16000,"tokenizer":{"training":{"algorithm":"byte-bpe-v1"}}}`)
 	if err := ValidateArchitectureTokenizer(raw); err != nil {
 		t.Fatal(err)
 	}

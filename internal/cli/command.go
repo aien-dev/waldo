@@ -198,7 +198,7 @@ func newModelCommand(state *cobraState) *cobra.Command {
 			booleanFlag("force", "replace an existing output file")),
 		leaf(state, "forecast [index-path...] | <compose.yaml>", "Estimate training readiness and runtime", "Forecasts one pass over selected index tokens or a declared model compose on the current host. Use --compare-hosts to include the versioned hardware catalog.", cobra.ArbitraryArgs, runModelForecast,
 			booleanFlag("compare-hosts", "include the versioned training-hardware comparison")),
-		leaf(state, "train-tokenizer [index-path...]", "Train a deterministic tokenizer artifact", "Builds a byte-fallback tokenizer from a bounded deterministic sample of a distributable index selection. The artifact pins the corpus BOM and reports compression against r50k_base.", cobra.ArbitraryArgs, runModelTrainTokenizer,
+		leaf(state, "train-tokenizer [index-path...]", "Train a deterministic tokenizer artifact", "Builds a byte-level BPE tokenizer from a bounded deterministic sample of a distributable index selection. The artifact pins the corpus BOM and reports compression against r50k_base.", cobra.ArbitraryArgs, runModelTrainTokenizer,
 			requiredTextFlag("output", "new tokenizer artifact JSON path"),
 			integerFlag("vocabulary-size", 32000, "maximum vocabulary size (259..100000)"),
 			integer64Flag("sample-bytes", 64<<20, "maximum deterministic training sample bytes"),

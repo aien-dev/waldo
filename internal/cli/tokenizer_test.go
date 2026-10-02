@@ -12,16 +12,16 @@ import (
 	waldotokenizer "github.com/openwaldo/waldo/internal/tokenizer"
 )
 
-func TestTokenizerCompressionGateUsesBytesPerTokenAsHigherIsBetter(t *testing.T) {
-	baseline := waldotokenizer.Comparison{Tokenizer: "r50k", BytesPerToken: 4}
-	if err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", BytesPerToken: 3.6}}, 0.10); err != nil {
+func TestTokenizerCompressionGateBoundsTokenInflation(t *testing.T) {
+	baseline := waldotokenizer.Comparison{Tokenizer: "r50k", Bytes: 400, Tokens: 100, BytesPerToken: 4}
+	if err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", Bytes: 400, Tokens: 110, BytesPerToken: 400.0 / 110}}, 0.10); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", BytesPerToken: 4.5}}, 0.10); err != nil {
+	if err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", Bytes: 400, Tokens: 90, BytesPerToken: 400.0 / 90}}, 0.10); err != nil {
 		t.Fatal(err)
 	}
-	err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", BytesPerToken: 3.59}}, 0.10)
-	if err == nil || !strings.Contains(err.Error(), "worse than r50k") {
-		t.Fatalf("compression regression error = %v", err)
+	err := validateTokenizerCompression([]waldotokenizer.Comparison{baseline, {Tokenizer: "candidate", Bytes: 400, Tokens: 111, BytesPerToken: 400.0 / 111}}, 0.10)
+	if err == nil || !strings.Contains(err.Error(), "more tokens than r50k") {
+		t.Fatalf("token inflation error = %v", err)
 	}
 }

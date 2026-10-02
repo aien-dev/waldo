@@ -127,7 +127,7 @@ func TestFoundationLadderKeepsOneControlledRecipe(t *testing.T) {
 			t.Fatalf("%s is not a fresh, foundation-only compose", file)
 		}
 		architecture := compose.Architecture
-		if architecture.Tokenizer.Name != "" || architecture.Tokenizer.Artifact != nil || architecture.Tokenizer.Training == nil || architecture.Tokenizer.Training.Algorithm != model.TokenizerAlgorithmBytepieceV1 || architecture.Tokenizer.Training.SampleBytes != 268435456 || architecture.Tokenizer.Training.MaxCompressionRegression != 0.10 || architecture.VocabularySize != 16000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
+		if architecture.Tokenizer.Name != "" || architecture.Tokenizer.Artifact != nil || architecture.Tokenizer.Training == nil || architecture.Tokenizer.Training.Algorithm != model.TokenizerAlgorithmByteBPEV1 || architecture.Tokenizer.Training.SampleBytes != 268435456 || architecture.Tokenizer.Training.MaxTokenInflation != 0.35 || architecture.VocabularySize != 16000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" {
 			t.Fatalf("%s architecture controls = %+v", file, architecture)
 		}
 		stage := compose.Stages[0]

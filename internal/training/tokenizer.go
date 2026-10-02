@@ -71,7 +71,7 @@ func ValidateArchitectureTokenizer(raw json.RawMessage) error {
 		return err
 	}
 	if architecture.Tokenizer.Artifact == nil && architecture.Tokenizer.Training != nil {
-		if architecture.Tokenizer.Training.Algorithm != "bytepiece-v1" {
+		if architecture.Tokenizer.Training.Algorithm != "byte-bpe-v1" {
 			return fmt.Errorf("unsupported tokenizer training algorithm %q", architecture.Tokenizer.Training.Algorithm)
 		}
 		return nil
@@ -83,7 +83,7 @@ func ValidateArchitectureTokenizer(raw json.RawMessage) error {
 // ResolveTokenizerSpec resolves both built-in tokenizers and a content-pinned
 // trained tokenizer embedded in the portable model contract.
 func ResolveTokenizerSpec(spec TokenizerSpec) (TokenizerSpec, TokenCodec, error) {
-	if spec.Name != waldoTokenizer.TrainedName {
+	if !waldoTokenizer.IsTrainedName(spec.Name) {
 		if spec.Artifact != nil {
 			return TokenizerSpec{}, nil, fmt.Errorf("built-in tokenizer %s cannot embed a trained artifact", spec.Name)
 		}
