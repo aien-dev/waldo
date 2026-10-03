@@ -1,20 +1,28 @@
-# Assistant EOS canary
+# Assistant EOS canaries
 
-This experiment tests whether assistant-response post-training teaches the
-76.6M Gate 3B checkpoint to terminate answers. It does not reopen or promote
-the foundation ladder.
+These experiments test whether assistant-response post-training teaches the
+76.6M Gate 3B checkpoint to terminate answers and whether a broad conversation
+mixture improves answer quality. They do not reopen or promote the foundation
+ladder.
 
 ## What is controlled
 
 - The base model, model ID, and run ID are pinned.
 - Baseline and child use the same textual prompt: `User: ...\n\nAssistant:`.
 - Decoding is greedy with a 128-token ceiling.
-- The child receives one 10M-token assistant-response stage.
+- Each child receives one 10M-token assistant-response stage.
 - WALDO masks user text, supervises assistant text, and supervises the packed
   EOS target when the final message is an assistant message.
 
-This is a practical intervention test, not an EOS-only ablation: the child also
-learns answer content and conversational formatting from the selected data.
+This is a practical intervention test, not an EOS-only ablation: each child
+also learns answer content and conversational formatting from its selected
+data.
+
+The first child weights the narrow interaction-contract corpus heavily. It
+improved EOS completion from 0/10 to 7/10 but retained severe repetition and
+inserted unrelated operational language. The second child changes only the
+corpus mixture to 50% OASST2, 25% HelpSteer2, and 25% Dolly. The base, token
+budget, optimizer, learning rate, schedule, seed, and evaluation remain fixed.
 
 ## Train
 
@@ -24,6 +32,17 @@ go run ./cmd/waldo/ model forecast \
 
 go run ./cmd/waldo/ model train foundation-small-assistant-eos-01 \
   composes/experiments/0001-assistant-eos-canary.yaml \
+  --hostfile ~/hostfile
+```
+
+Broad-mixture follow-up:
+
+```console
+go run ./cmd/waldo/ model forecast \
+  composes/experiments/0002-assistant-eos-broad-canary.yaml
+
+go run ./cmd/waldo/ model train foundation-small-assistant-broad-01 \
+  composes/experiments/0002-assistant-eos-broad-canary.yaml \
   --hostfile ~/hostfile
 ```
 
@@ -42,9 +61,15 @@ go run ./cmd/waldo/ model train foundation-small-assistant-eos-01 \
 
 ## Evidence and decision rule
 
-Run the script in this directory before training for the base baseline and
-after training for the child. It writes JSONL containing the generated token
-count and `finish_reason` for every question.
+Run the script in this directory for the base, contract-heavy child, or broad
+child. It writes JSONL containing the generated token count and `finish_reason`
+for every question.
+
+```console
+./composes/experiments/evaluate-assistant-eos.sh baseline /tmp/assistant-eos-baseline.jsonl
+./composes/experiments/evaluate-assistant-eos.sh contract /tmp/assistant-eos-contract.jsonl
+./composes/experiments/evaluate-assistant-eos.sh broad /tmp/assistant-eos-broad.jsonl
+```
 
 The theory is supported enough to continue the conversation-tuning ladder when:
 

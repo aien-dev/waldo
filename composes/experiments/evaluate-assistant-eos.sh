@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (($# != 2)); then
-  echo "usage: $0 baseline|child OUTPUT.jsonl" >&2
+  echo "usage: $0 baseline|contract|broad OUTPUT.jsonl" >&2
   exit 2
 fi
 
@@ -13,12 +13,16 @@ case "$mode" in
     model="foundation-small-language-full-bpe-01"
     run_id="11c4dd9bde7821c3"
     ;;
-  child)
+  child | contract)
     model="foundation-small-assistant-eos-01"
     run_id="$(go run ./cmd/waldo/ --json model summary "$model" | jq -r '.bom.current_run_id')"
     ;;
+  broad)
+    model="foundation-small-assistant-broad-01"
+    run_id="$(go run ./cmd/waldo/ --json model summary "$model" | jq -r '.bom.current_run_id')"
+    ;;
   *)
-    echo "mode must be baseline or child" >&2
+    echo "mode must be baseline, contract, or broad" >&2
     exit 2
     ;;
 esac

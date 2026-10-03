@@ -274,6 +274,23 @@ func TestAssistantEOSExperimentPinsBaseAndSupervisesAssistant(t *testing.T) {
 	}
 }
 
+func TestBroadAssistantEOSExperimentChangesOnlyCorpora(t *testing.T) {
+	contract := loadCompose(t, "experiments/0001-assistant-eos-canary.yaml")
+	broad := loadCompose(t, "experiments/0002-assistant-eos-broad-canary.yaml")
+	if !reflect.DeepEqual(contract.Base, broad.Base) || !reflect.DeepEqual(contract.Interaction, broad.Interaction) || len(contract.Stages) != 1 || len(broad.Stages) != 1 {
+		t.Fatalf("broad experiment changed base or interaction contract")
+	}
+	contractStage, broadStage := contract.Stages[0], broad.Stages[0]
+	contractStage.Corpora, broadStage.Corpora = nil, nil
+	if !reflect.DeepEqual(contractStage, broadStage) {
+		t.Fatalf("broad experiment changed more than corpora: contract=%+v broad=%+v", contractStage, broadStage)
+	}
+	want := []string{"post-train/sft/oasst2", "post-train/sft/helpsteer2", "post-train/sft/dolly"}
+	if got := corpusPaths(broad.Stages[0].Corpora); !reflect.DeepEqual(got, want) {
+		t.Fatalf("broad experiment corpora = %v, want %v", got, want)
+	}
+}
+
 func loadCompose(t *testing.T, path string) model.Compose {
 	t.Helper()
 	compose, _, err := model.LoadCompose(path)
