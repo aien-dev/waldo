@@ -93,6 +93,8 @@ func distributableLicense(value string) (string, bool) {
 		return "preserve source attribution", true
 	case "CC-BY-SA-2.0", "CC-BY-SA-2.5", "CC-BY-SA-3.0", "CC-BY-SA-4.0", "ODbL-1.0":
 		return "preserve source attribution and share-alike terms for redistributed corpus artifacts", true
+	case "CDLA-Sharing-1.0":
+		return "preserve source attribution and CDLA-Sharing-1.0 terms for redistributed corpus data", true
 	default:
 		return "", false
 	}

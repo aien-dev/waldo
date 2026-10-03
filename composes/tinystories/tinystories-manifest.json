@@ -1,0 +1,45 @@
+{
+  "kind": "waldo-corpus-directory",
+  "schema": 1,
+  "corpus": {
+    "id": "tinystories",
+    "title": "TinyStories",
+    "description": "Synthetic short stories using vocabulary understood by typical three- and four-year-old children."
+  },
+  "source": {
+    "id": "tinystories",
+    "license": "CDLA-Sharing-1.0",
+    "source": {
+      "name": "TinyStories",
+      "version": "7dfb18bd830e361f237a94bcdb466bc6e7b09050",
+      "url": "https://huggingface.co/datasets/roneneldan/TinyStories/tree/7dfb18bd830e361f237a94bcdb466bc6e7b09050",
+      "category": "public-dataset",
+      "license_evidence": {
+        "declaration": "CDLA-Sharing-1.0",
+        "url": "https://cdla.dev/sharing-1-0/"
+      },
+      "content": {
+        "types": ["text"],
+        "languages": ["en"],
+        "machine_generated": "yes",
+        "selection": "All four train split Parquet shards from the pinned TinyStories revision."
+      }
+    },
+    "input": {
+      "format": "parquet",
+      "type": "record-map",
+      "fields": {
+        "text": ["text"]
+      }
+    }
+  },
+  "fetcher": {
+    "name": "manual-pinned-download",
+    "revision": "7dfb18bd830e361f237a94bcdb466bc6e7b09050"
+  },
+  "raw": {
+    "file_count": 4,
+    "byte_count": 990786315,
+    "tree_sha256": "9869eaa290ea79398f1b30a6d89ab30929880c13cfaceb34d95e7c591defb423"
+  }
+}

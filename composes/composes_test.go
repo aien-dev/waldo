@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/openwaldo/waldo/internal/corpus"
+	"github.com/openwaldo/waldo/internal/ingest"
 	"github.com/openwaldo/waldo/internal/model"
 	"github.com/openwaldo/waldo/internal/training"
 )
@@ -25,6 +26,12 @@ var foundationFiles = []string{
 	"0004-foundation-small-general.yaml",
 	"0005-foundation-medium-pilot.yaml",
 	"0006-foundation-medium.yaml",
+}
+
+var tinyStoriesFiles = []string{
+	"tinystories/0001-tinystories-canary.yaml",
+	"tinystories/0002-tinystories-8m.yaml",
+	"tinystories/0003-tinystories-32m.yaml",
 }
 
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
@@ -288,6 +295,116 @@ func TestBroadAssistantEOSExperimentChangesOnlyCorpora(t *testing.T) {
 	want := []string{"post-train/sft/oasst2", "post-train/sft/helpsteer2", "post-train/sft/dolly"}
 	if got := corpusPaths(broad.Stages[0].Corpora); !reflect.DeepEqual(got, want) {
 		t.Fatalf("broad experiment corpora = %v, want %v", got, want)
+	}
+}
+
+func TestTinyStoriesManifestIsPinnedAndLoadable(t *testing.T) {
+	root := t.TempDir()
+	manifest, err := os.ReadFile("tinystories/tinystories-manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "manifest.json"), manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data := filepath.Join(root, "data")
+	if err := os.Mkdir(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"train-00000-of-00004-2d5a1467fff1081b.parquet",
+		"train-00001-of-00004-5852b56a2bd28fd9.parquet",
+		"train-00002-of-00004-a26307300439e943.parquet",
+		"train-00003-of-00004-d243063613e5a057.parquet",
+	} {
+		if err := os.WriteFile(filepath.Join(data, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	directory, recognized, err := ingest.LoadCorpusDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !recognized || directory.Corpus.ID != "tinystories" || directory.Source == nil {
+		t.Fatalf("directory = %+v, recognized = %v", directory, recognized)
+	}
+	source := directory.Source
+	if source.License != "CDLA-Sharing-1.0" || source.Source.Version != "7dfb18bd830e361f237a94bcdb466bc6e7b09050" || source.Source.LicenseEvidence == nil || source.Source.LicenseEvidence.Declaration != "CDLA-Sharing-1.0" {
+		t.Fatalf("source = %+v", source)
+	}
+	if source.Input.Format != "parquet" || source.Input.Type != ingest.ProfileRecordMap || !reflect.DeepEqual(source.Input.Fields.Text, []string{"text"}) {
+		t.Fatalf("input = %+v", source.Input)
+	}
+	if directory.Raw.FileCount != 4 || directory.Raw.ByteCount != 990786315 || directory.Raw.TreeSHA256 != "9869eaa290ea79398f1b30a6d89ab30929880c13cfaceb34d95e7c591defb423" {
+		t.Fatalf("raw evidence = %+v", directory.Raw)
+	}
+}
+
+func TestTinyStoriesLadderForecastsAndControls(t *testing.T) {
+	want := []struct {
+		parameters uint64
+		tokens     int64
+	}{
+		{8593664, 10027008},
+		{8593664, 500006912},
+		{32261632, 1000013824},
+	}
+	var first model.Compose
+	for index, file := range tinyStoriesFiles {
+		compose := loadCompose(t, file)
+		forecast, err := model.ForecastCompose(compose)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if forecast.ApproximateParameters != want[index].parameters || forecast.PlannedTokens != want[index].tokens {
+			t.Fatalf("%s forecast = %d parameters/%d tokens, want %+v", file, forecast.ApproximateParameters, forecast.PlannedTokens, want[index])
+		}
+		architecture := compose.Architecture
+		if architecture.ContextTokens != 512 || architecture.VocabularySize != 10000 || architecture.Dropout != 0 || !architecture.QKNormalization || architecture.Initialization != "depth-scaled" || !architecture.TieEmbeddings || architecture.ParameterDType != "float32" || architecture.Tokenizer.Training == nil {
+			t.Fatalf("%s architecture controls = %+v", file, architecture)
+		}
+		tokenizer := architecture.Tokenizer.Training
+		if tokenizer.Algorithm != model.TokenizerAlgorithmByteBPEV1 || tokenizer.SampleBytes != 268435456 || tokenizer.Seed != 42 || tokenizer.DistributionPolicy != corpus.DistributionPolicyDistributable || !reflect.DeepEqual(corpusPaths(tokenizer.Corpora), []string{"core/synthetic/tinystories"}) {
+			t.Fatalf("%s tokenizer controls = %+v", file, tokenizer)
+		}
+		if len(compose.Stages) != 1 {
+			t.Fatalf("%s stages = %d", file, len(compose.Stages))
+		}
+		stage := compose.Stages[0]
+		if stage.Name != "tinystories-pretrain" || stage.Type != "pre-training" || stage.Objective != "causal-language-modeling" || stage.Filter != nil || !reflect.DeepEqual(corpusPaths(stage.Corpora), []string{"core/synthetic/tinystories"}) || stage.Corpora[0].Weight == nil || *stage.Corpora[0].Weight != 1 {
+			t.Fatalf("%s stage = %+v", file, stage)
+		}
+		parameters := stage.Parameters
+		if parameters.Profile != "causal-pretrain-weighted" || parameters.DistributionPolicy != corpus.DistributionPolicyDistributable || parameters.BatchSize != 64 || parameters.SequenceLength != 512 || parameters.LearningRate != 0.0005 || parameters.Optimizer != "adamw" || parameters.Schedule != "warmup-stable-warmdown" || parameters.Seed != 42 {
+			t.Fatalf("%s parameters = %+v", file, parameters)
+		}
+		if index == 0 {
+			first = compose
+		} else if index == 1 && !reflect.DeepEqual(first.Architecture, compose.Architecture) {
+			t.Fatal("TinyStories canary and 8M qualification architectures differ")
+		}
+	}
+}
+
+func TestTinyStoriesREADMEDefinesExperimentContract(t *testing.T) {
+	content, err := os.ReadFile("tinystories/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"0001-tinystories-canary.yaml",
+		"0002-tinystories-8m.yaml",
+		"0003-tinystories-32m.yaml",
+		"7dfb18bd830e361f237a94bcdb466bc6e7b09050",
+		"CDLA-Sharing-1.0",
+		"Controlled differences from the paper",
+		"Promotion gates",
+		"Did it learn EOS without post-training?",
+		"evaluate-tinystories.sh",
+	} {
+		if !strings.Contains(string(content), required) {
+			t.Errorf("TinyStories README does not contain %q", required)
+		}
 	}
 }
 
