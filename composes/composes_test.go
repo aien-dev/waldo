@@ -259,7 +259,7 @@ func TestToolUseComposeHasSizedBaseAndStructuredToolStage(t *testing.T) {
 
 func TestAssistantEOSExperimentPinsBaseAndSupervisesAssistant(t *testing.T) {
 	compose := loadCompose(t, "experiments/0001-assistant-eos-canary.yaml")
-	if compose.Base == nil || compose.Base.Model != "foundation-small-language-full-bpe-01" || compose.Base.ModelID != "3587a82e9348" || compose.Base.RunID != "11c4dd9bde7821c3" {
+	if compose.Base == nil || compose.Base.Model != "foundation-small-language-full-bpe-01" || compose.Base.ModelID != "3587a82e93488cf709a14c5b9f0dfcca18839f12de2ba336121e5db25cc8aa07" || compose.Base.RunID != "11c4dd9bde7821c3" {
 		t.Fatalf("experiment base = %+v", compose.Base)
 	}
 	if compose.Architecture != (model.Architecture{}) {

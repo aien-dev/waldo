@@ -4,7 +4,7 @@ kind: waldo-model-compose
 schema: 1
 base:
   model: foundation-small-language-full-bpe-01
-  model_id: 3587a82e9348
+  model_id: 3587a82e93488cf709a14c5b9f0dfcca18839f12de2ba336121e5db25cc8aa07
   run_id: 11c4dd9bde7821c3
 interaction:
   template: user-assistant-v1
