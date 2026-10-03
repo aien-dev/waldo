@@ -591,9 +591,8 @@ func TestComposeInitializesFromCompletedManagedModelRun(t *testing.T) {
 	stage := testStage("tool-use")
 	compose := Compose{
 		Kind: "waldo-model-compose", Schema: 1,
-		Base:         &ComposeBase{Model: "conversation"},
-		Architecture: testArchitecture(),
-		Stages:       []Stage{stage},
+		Base:   &ComposeBase{Model: "conversation"},
+		Stages: []Stage{stage},
 	}
 	resolved, err := builder.ResolveCompose(context.Background(), compose, false)
 	if err != nil {
@@ -601,6 +600,9 @@ func TestComposeInitializesFromCompletedManagedModelRun(t *testing.T) {
 	}
 	if resolved.Base.ModelID != parent.Model.ID || resolved.Base.RunID != "parentrun" || resolved.Base.RunBOMSHA256 != parent.Model.Runs[0].BOMSHA256 || resolved.Base.ArtifactSHA256 == "" || resolved.Base.ArtifactBytes == 0 {
 		t.Fatalf("resolved parent pins = %+v", resolved.Base)
+	}
+	if !reflect.DeepEqual(resolved.Architecture, parent.Model.Architecture) {
+		t.Fatalf("resolved architecture = %+v, want %+v", resolved.Architecture, parent.Model.Architecture)
 	}
 	compose = resolved
 	child, err := builder.Compose(context.Background(), "tool-use", compose, []PreparedStage{preparedFixture(t, stage)})

@@ -545,7 +545,7 @@ func (compose Compose) Validate() error {
 	if err := compose.Interaction.Validate(); err != nil {
 		return err
 	}
-	inheritedArchitecture := compose.Base != nil && compose.Base.Source != "" && compose.Architecture == (Architecture{})
+	inheritedArchitecture := compose.Base != nil && compose.Architecture == (Architecture{})
 	if !inheritedArchitecture {
 		if err := compose.Architecture.Validate(); err != nil {
 			return err

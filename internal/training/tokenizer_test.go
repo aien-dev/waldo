@@ -208,6 +208,20 @@ func TestAssistantResponseModelingRequiresMatchingSupervisedRole(t *testing.T) {
 	}
 }
 
+func TestAssistantResponseModelingSupervisesFinalAssistantEOS(t *testing.T) {
+	conversation := record.Conversation{Messages: []record.Message{
+		{Role: "user", Content: "Hello"},
+		{Role: "assistant", Content: "Hi"},
+	}}
+	tokens, mask, err := tokenizeRecord(Record{Conversation: &conversation}, byteCodec{}, "assistant-response-modeling", ConversationTransform{Template: ConversationTemplateUserAssistantV1, SupervisedRoles: []string{"assistant"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mask) != len(tokens)+1 || !mask[len(mask)-1] {
+		t.Fatalf("assistant EOS target is not supervised: %d tokens, mask %v", len(tokens), mask)
+	}
+}
+
 type staticRecordSource []Record
 
 func (source staticRecordSource) Stream(ctx context.Context, consume func(Record) error) error {

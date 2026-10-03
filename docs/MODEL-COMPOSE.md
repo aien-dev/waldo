@@ -206,7 +206,7 @@ to `waldo model train`. A compose supports three initialization modes:
 | Compose declaration | Initial weights | Architecture rule |
 | --- | --- | --- |
 | no `base` | Newly initialized weights | `architecture` is required. |
-| `base.model` | Verified completed checkpoint from a named managed model, falling back to its origin when it has no completed run | `architecture` is required and must exactly match the managed model. |
+| `base.model` | Verified completed checkpoint from a named managed model, falling back to its origin when it has no completed run | `architecture` may be omitted and inherited; when present, it must exactly match. |
 | `base.source` | Verified origin weights acquired from an external source | `architecture` may be omitted and inherited; when present, it must exactly match. |
 
 `model` and `source` are mutually exclusive. A base initializes the destination
@@ -228,10 +228,11 @@ base:
   # artifact_sha256: <optional-checkpoint-sha256>
 ```
 
-The compose must contain a complete architecture exactly matching the named
-model. Use this form when the base should be visible to `waldo model list` and
-independently inspectable with `waldo model summary conversation`. Resolution
-turns omitted pins into immutable values before training starts.
+The compose may omit `architecture` and inherit it from the named model. When
+present, the complete architecture must exactly match. Use this form when the
+base should be visible to `waldo model list` and independently inspectable with
+`waldo model summary conversation`. Resolution turns the inherited architecture
+and omitted pins into immutable values before training starts.
 
 ### Direct external base
 

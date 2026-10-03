@@ -257,6 +257,23 @@ func TestToolUseComposeHasSizedBaseAndStructuredToolStage(t *testing.T) {
 	}
 }
 
+func TestAssistantEOSExperimentPinsBaseAndSupervisesAssistant(t *testing.T) {
+	compose := loadCompose(t, "experiments/0001-assistant-eos-canary.yaml")
+	if compose.Base == nil || compose.Base.Model != "foundation-small-language-full-bpe-01" || compose.Base.ModelID != "3587a82e9348" || compose.Base.RunID != "11c4dd9bde7821c3" {
+		t.Fatalf("experiment base = %+v", compose.Base)
+	}
+	if compose.Architecture != (model.Architecture{}) {
+		t.Fatalf("experiment architecture should be inherited: %+v", compose.Architecture)
+	}
+	if compose.Interaction.Template != model.InteractionUserAssistantV1 || len(compose.Stages) != 1 {
+		t.Fatalf("experiment contract = %+v / %d stages", compose.Interaction, len(compose.Stages))
+	}
+	stage := compose.Stages[0]
+	if stage.Objective != "assistant-response-modeling" || stage.Conversation == nil || !reflect.DeepEqual(stage.Conversation.SupervisedRoles, []string{"assistant"}) || stage.Parameters.Tokens != 10000000 {
+		t.Fatalf("experiment stage = %+v", stage)
+	}
+}
+
 func loadCompose(t *testing.T, path string) model.Compose {
 	t.Helper()
 	compose, _, err := model.LoadCompose(path)
