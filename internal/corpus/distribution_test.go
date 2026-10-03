@@ -4,7 +4,6 @@
 package corpus
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
@@ -56,25 +55,5 @@ func TestDistributableRecordPolicySkipsUnapprovedRows(t *testing.T) {
 		if policy.Allows("mixed", shard.RecordView{License: license}) {
 			t.Fatalf("unapproved row %q was selected", license)
 		}
-	}
-}
-
-func TestCDLASharingIsDistributableWithCorpusObligation(t *testing.T) {
-	license := "CDLA-Sharing-1.0"
-	if !DistributableLicense(license) {
-		t.Fatalf("%s should be accepted by the distributable policy", license)
-	}
-	bom := BOM{
-		Licenses: map[string]index.Measures{license: {Docs: 1}},
-		Manifests: []ManifestPin{{Path: "core/synthetic/tinystories", Licenses: map[string]index.Measures{license: {Docs: 1}}, Sources: []index.Source{{
-			Name: "TinyStories", Version: "pinned-revision", LicenseEvidence: &index.LicenseEvidence{URL: "https://cdla.dev/sharing-1-0/"},
-		}}}},
-	}
-	review, err := ReviewDistributable(bom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(review.Licenses, []string{license}) || !reflect.DeepEqual(review.Obligations, []string{"preserve source attribution and CDLA-Sharing-1.0 terms for redistributed corpus data"}) {
-		t.Fatalf("review = %+v", review)
 	}
 }

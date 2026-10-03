@@ -1,4 +1,4 @@
-# TinyStories Gate 1: verify pinned ingestion, tokenizer training, and the full training pipeline.
+# TinyStories-style Gate 1: verify the existing-corpus proxy and full training pipeline.
 kind: waldo-model-compose
 schema: 1
 architecture:
@@ -22,19 +22,28 @@ architecture:
       seed: 42
       max_token_inflation: 0.35
       distribution_policy: distributable
+      filter:
+        main_content: true
+        exclude:
+          repetitive_content: true
+          boilerplate_content: true
       corpora:
-        - core/synthetic/tinystories
+        - core/common-pile/pressbooks
 stages:
   - name: tinystories-pretrain
     type: pre-training
     objective: causal-language-modeling
+    filter:
+      main_content: true
+      exclude:
+        repetitive_content: true
+        boilerplate_content: true
     corpora:
-      - path: core/synthetic/tinystories
+      - path: core/synthetic/cosmopedia-v2
         weight: 1
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      distribution_policy: distributable
       tokens: 10000000
       batch_size: 64
       gradient_accumulation_steps: 4
