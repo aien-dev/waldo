@@ -33,6 +33,12 @@ var tinyStoriesFiles = []string{
 	"tinystories/0003-tinystories-32m.yaml",
 }
 
+var generalFoundationFiles = []string{
+	"general-foundation/0001-general-mixture-32m.yaml",
+	"general-foundation/0002-general-foundation-125m-pilot.yaml",
+	"general-foundation/0003-general-foundation-125m.yaml",
+}
+
 func TestModelComposeGuideNamesEverySchemaField(t *testing.T) {
 	guide, err := os.ReadFile(filepath.Join("..", "docs", "MODEL-COMPOSE.md"))
 	if err != nil {
@@ -217,23 +223,136 @@ func TestSmallLanguageFullChangesOnlyTrainingHorizon(t *testing.T) {
 	}
 }
 
-func TestFoundationREADMEDefinesEvaluationContract(t *testing.T) {
+func TestRootREADMESelectsActiveGeneralFoundationPlan(t *testing.T) {
 	content, err := os.ReadFile("README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(content)
-	for _, required := range append(foundationFiles,
-		"The Linux kernel is",
-		"The capital city of France is",
-		"Two plus two equals",
-		"Once upon a time",
-		"Promotion gates",
-		"seed 43",
-		"conversation tuning",
-	) {
+	for _, required := range []string{
+		"general-foundation",
+		"32.3M data ablation",
+		"125.6M",
+		"0/10 EOS",
+		"Corpus extraction",
+		"Post-training data",
+		"Do not continue directly",
+	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("README does not contain %q", required)
+		}
+	}
+}
+
+func TestGeneralFoundationLadderForecastsAndControls(t *testing.T) {
+	want := []struct {
+		parameters uint64
+		tokens     int64
+	}{
+		{32261632, 1000013824},
+		{125562624, 2500067328},
+		{125562624, 5000003584},
+	}
+	wantCorpora := []string{
+		"core/common-pile/wikimedia",
+		"core/common-pile/stackexchange",
+		"science/plos",
+		"core/common-pile/pressbooks",
+	}
+	wantWeights := []uint64{11, 5, 3, 1}
+	wantTokenizerCorpora := []string{
+		"core/common-pile/wikimedia",
+		"core/common-pile/pressbooks",
+		"science/plos",
+	}
+	var pilot model.Compose
+	for index, file := range generalFoundationFiles {
+		compose := loadCompose(t, file)
+		forecast, err := model.ForecastCompose(compose)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if forecast.ApproximateParameters != want[index].parameters || forecast.PlannedTokens != want[index].tokens {
+			t.Fatalf("%s forecast = %d parameters/%d tokens, want %+v", file, forecast.ApproximateParameters, forecast.PlannedTokens, want[index])
+		}
+		if compose.Base != nil || compose.Interaction.Template != "" || len(compose.Stages) != 1 {
+			t.Fatalf("%s is not a fresh one-stage foundation compose", file)
+		}
+		stage := compose.Stages[0]
+		if stage.Name != "general-pretrain" || stage.Type != "pre-training" || stage.Objective != "causal-language-modeling" || !reflect.DeepEqual(corpusPaths(stage.Corpora), wantCorpora) {
+			t.Fatalf("%s stage = %+v", file, stage)
+		}
+		for position, selection := range stage.Corpora {
+			if selection.Weight == nil || *selection.Weight != wantWeights[position] {
+				t.Fatalf("%s corpus %s weight = %v, want %d", file, selection.Path, selection.Weight, wantWeights[position])
+			}
+		}
+		if stage.Filter == nil || stage.Filter.MainContent == nil || !*stage.Filter.MainContent || stage.Filter.Exclude == nil || stage.Filter.Exclude.RepetitiveContent == nil || !*stage.Filter.Exclude.RepetitiveContent || stage.Filter.Exclude.BoilerplateContent == nil || !*stage.Filter.Exclude.BoilerplateContent {
+			t.Fatalf("%s quality filter = %+v", file, stage.Filter)
+		}
+		parameters := stage.Parameters
+		if parameters.Profile != "causal-pretrain-weighted" || parameters.Parallelism != training.ParallelismAuto || parameters.DistributionPolicy != "" || parameters.ComputePrecision != "bfloat16" || parameters.Compile || parameters.Optimizer != "adamw" || parameters.Schedule != "warmup-stable-warmdown" || parameters.Seed != 42 {
+			t.Fatalf("%s parameters = %+v", file, parameters)
+		}
+		tokenizer := compose.Architecture.Tokenizer.Training
+		if tokenizer == nil || tokenizer.Algorithm != model.TokenizerAlgorithmByteBPEV1 || tokenizer.SampleBytes != 268435456 || tokenizer.Seed != 42 || tokenizer.DistributionPolicy != corpus.DistributionPolicyDistributable {
+			t.Fatalf("%s tokenizer = %+v", file, tokenizer)
+		}
+		if index == 0 {
+			if compose.Architecture.VocabularySize != 10000 || !reflect.DeepEqual(corpusPaths(tokenizer.Corpora), []string{"core/common-pile/pressbooks"}) {
+				t.Fatalf("%s controlled-ablation tokenizer changed: %+v", file, compose.Architecture)
+			}
+		} else {
+			if compose.Architecture.VocabularySize != 16000 || !reflect.DeepEqual(corpusPaths(tokenizer.Corpora), wantTokenizerCorpora) {
+				t.Fatalf("%s 125M tokenizer = %+v", file, tokenizer)
+			}
+			if index == 1 {
+				pilot = compose
+			}
+		}
+	}
+	qualified := loadCompose(t, generalFoundationFiles[2])
+	if !reflect.DeepEqual(pilot.Architecture, qualified.Architecture) || !reflect.DeepEqual(pilot.Stages[0].Corpora, qualified.Stages[0].Corpora) || !reflect.DeepEqual(pilot.Stages[0].Filter, qualified.Stages[0].Filter) {
+		t.Fatal("125M pilot and qualification changed architecture or data recipe")
+	}
+}
+
+func TestGeneralMixtureGateChangesOnlyPretrainingCorpora(t *testing.T) {
+	cosmopedia := loadCompose(t, "tinystories/0003-tinystories-32m.yaml")
+	general := loadCompose(t, generalFoundationFiles[0])
+	if !reflect.DeepEqual(cosmopedia.Architecture, general.Architecture) {
+		t.Fatal("general mixture ablation changed the controlled 32M architecture")
+	}
+	left, right := cosmopedia.Stages[0], general.Stages[0]
+	left.Name, right.Name = "", ""
+	left.Corpora, right.Corpora = nil, nil
+	if !reflect.DeepEqual(left, right) {
+		t.Fatalf("general mixture ablation changed controls beyond corpora: cosmopedia=%+v general=%+v", left, right)
+	}
+}
+
+func TestGeneralFoundationREADMEDefinesDataAndPostTrainingPlan(t *testing.T) {
+	content, err := os.ReadFile("general-foundation/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"0001-general-mixture-32m.yaml",
+		"0002-general-foundation-125m-pilot.yaml",
+		"0003-general-foundation-125m.yaml",
+		"55%",
+		"controlled data ablation",
+		"near deduplication",
+		"evaluation prompt and benchmark",
+		"Do not paraphrase",
+		"assistant tokens",
+		"interaction-contract-v1",
+		"Promotion gates",
+		"Questions recorded at every gate",
+		"seed 43",
+	} {
+		if !strings.Contains(string(content), required) {
+			t.Errorf("general-foundation README does not contain %q", required)
 		}
 	}
 }
@@ -365,6 +484,9 @@ func TestTinyStoriesREADMEDefinesExperimentContract(t *testing.T) {
 		"Promotion gates",
 		"Did it learn EOS without post-training?",
 		"evaluate-tinystories.sh",
+		"cosmopedia-32m-01",
+		"2.1102",
+		"Do not scale this recipe further",
 	} {
 		if !strings.Contains(string(content), required) {
 			t.Errorf("TinyStories README does not contain %q", required)

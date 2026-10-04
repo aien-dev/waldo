@@ -130,3 +130,23 @@ replace the deterministic promotion result:
 
 Reference: [TinyStories paper](https://arxiv.org/abs/2305.07759). The paper is
 the experimental inspiration; Cosmopedia v2 is the actual training corpus.
+
+## Recorded results
+
+This proxy is complete and did not meet its coherence hypothesis:
+
+| Model | Parameters | Tokens | Held-out loss | Greedy EOS | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `tinystories-canary-01` | 8.6M | 10M | 4.9915 | 0/10 | Pipeline passed; generation collapsed into markup and repeated templates |
+| `tinystories-8m-01` | 8.6M | 500M | 2.6408 | 1/10 | Better local English; poor prompt retention and repetition in all probes |
+| `cosmopedia-32m-01` | 32.3M | 1B | 2.1102 | 0/10 | Better grammar; semantic drift and repetition remained |
+
+The 32.3M model also produced 0/10 EOS at temperature 0.7. Sampling reduced
+exact phrase loops but did not restore the ball, rabbit, dog, boat, or bird
+prompt subjects. WALDO's continuous-EOS packing appends and supervises EOS at
+every document boundary, so the stopping result is not missing EOS training;
+Cosmopedia documents are long and the model learned their recurring explanatory
+templates.
+
+Do not scale this recipe further. The active experiment moves to a broad data
+ablation in [`../general-foundation`](../general-foundation/README.md).
