@@ -199,7 +199,8 @@ import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
-    result = json.load(stream)
+    document = json.load(stream)
+result = document["result"]
 text = result["text"].lstrip()
 assert text.startswith("sapphire. END"), repr(result["text"])
 assert result["finish_reason"] == "eos", result
