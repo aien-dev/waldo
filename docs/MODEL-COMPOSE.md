@@ -24,6 +24,17 @@ depend on the selected index revision, filters, held-out records, tokenizer,
 and objective, so their exact tokens, steps, and added runtime are reported
 during training preflight rather than guessed.
 
+Forecast JSON includes a versioned `forecast.fitness` object. It decomposes
+WALDO's exact bias-free RoPE/RMSNorm/GQA/SwiGLU architecture, reports both
+conventional `6ND` and architecture-aware compute approximations, separates
+memory components, and shows batch arithmetic for compatible world sizes.
+Corpus-dependent fields explicitly say `requires-corpus-preflight` until the
+selected immutable corpus has been scanned with the selected tokenizer. The
+forecast refuses empirical loss prediction when comparable run evidence is
+absent; it never treats a token/parameter ratio as a capability promise. The
+formulas and evidence policy are specified in
+[`MODEL-TRAINING-FITNESS.md`](MODEL-TRAINING-FITNESS.md).
+
 ## Why the profile is called causal pretraining
 
 The name is **causal**, not casual. In causal language modeling, the model
