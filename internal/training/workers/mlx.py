@@ -20,7 +20,7 @@ from mlx.utils import tree_flatten, tree_map, tree_unflatten
 
 
 PROTOCOL_SCHEMA = 1
-WORKER_REVISION = "builtin-mlx-worker-schema-1-r15"
+WORKER_REVISION = "builtin-mlx-worker-schema-1-r16"
 
 
 class ArtifactIntegrityError(ValueError):
@@ -629,7 +629,19 @@ class Trainer:
         item = {
             "step": self.step_number,
             "tokens": self.consumed_tokens,
-            "metrics": {"heldout_loss": loss_value, "heldout_perplexity": math.exp(min(loss_value, 80.0))},
+            "metrics": {
+                "heldout_loss": loss_value,
+                "heldout_perplexity": math.exp(min(loss_value, 80.0)),
+                "heldout_nll_sum": loss_value * self.evaluation_token_targets,
+                "heldout_target_tokens": float(self.evaluation_token_targets),
+                "heldout_utf8_bytes": float(self.begin["evaluation_set"]["text_bytes"]),
+                "heldout_bits_per_byte": (
+                    loss_value * self.evaluation_token_targets
+                    / (math.log(2.0) * self.begin["evaluation_set"]["text_bytes"])
+                    if self.begin["evaluation_set"]["text_bytes"] > 0
+                    else 0.0
+                ),
+            },
         }
         self.evaluations.append(item)
         earlier = [evaluation["metrics"]["heldout_loss"] for evaluation in self.evaluations[:-1] if evaluation["step"] > 0]

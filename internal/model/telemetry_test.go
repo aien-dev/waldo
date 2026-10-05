@@ -6,7 +6,12 @@
 package model
 
 import (
+	"encoding/csv"
+	"math"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +43,39 @@ func TestTelemetryRecordIncludesEfficiencyMeasurements(t *testing.T) {
 		if index < 0 || record[index] != expected {
 			t.Fatalf("telemetry %s = %q, want %q; record=%v", name, valueAt(record, index), expected, record)
 		}
+	}
+}
+
+func TestTelemetryRecordIncludesExactHeldoutTotals(t *testing.T) {
+	evaluation := training.Evaluation{Metrics: map[string]float64{
+		"heldout_loss": 1.5, "heldout_perplexity": 4.481689,
+		"heldout_nll_sum": 150, "heldout_target_tokens": 100,
+		"heldout_utf8_bytes": 75, "heldout_bits_per_byte": 150 / (75 * math.Ln2),
+	}}
+	record := telemetryRecord(telemetryRow{Training: &training.Event{Kind: "evaluation", Evaluation: &evaluation}})
+	for _, name := range []string{"telemetry_schema", "heldout_nll_sum", "heldout_target_tokens", "heldout_utf8_bytes", "heldout_bits_per_byte"} {
+		if record[telemetryColumn(name)] == "" {
+			t.Fatalf("telemetry %s is empty: %v", name, record)
+		}
+	}
+}
+
+func TestAppendTelemetryPreservesVersionOneSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), TelemetryFilename)
+	if err := os.WriteFile(path, []byte(strings.Join(telemetryHeaderV1, ",")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := appendTelemetry(path, telemetryRow{Observed: time.Now(), Started: time.Now(), Event: "run"}); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(file).ReadAll()
+	_ = file.Close()
+	if err != nil || len(rows) != 2 || len(rows[1]) != len(telemetryHeaderV1) {
+		t.Fatalf("version-one telemetry rows=%v err=%v", rows, err)
 	}
 }
 

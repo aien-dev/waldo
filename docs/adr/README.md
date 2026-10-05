@@ -77,3 +77,4 @@ Superseded and historical ADRs are removed. Missing numbers are intentional.
 - [0078: Cache versioned prepared-sequence chunks per node](0078-cache-versioned-prepared-sequence-chunks.md)
 - [0079: Publish the best held-out checkpoint](0079-publish-best-heldout-checkpoint.md)
 - [0080: Support a pinned contiguous-tail evaluation view](0080-contiguous-tail-evaluation.md)
+- [0081: Version exact intrinsic-loss telemetry](0081-version-intrinsic-loss-telemetry.md)

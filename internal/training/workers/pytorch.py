@@ -24,8 +24,8 @@ from torch.utils.checkpoint import checkpoint
 
 
 PROTOCOL_SCHEMA = 1
-WORKER_REVISION = "builtin-pytorch-worker-schema-1-r15"
-TORCHTITAN_REVISION = "builtin-torchtitan-worker-schema-1-r26"
+WORKER_REVISION = "builtin-pytorch-worker-schema-1-r16"
+TORCHTITAN_REVISION = "builtin-torchtitan-worker-schema-1-r27"
 IS_PRIMARY = True
 
 
@@ -1215,6 +1215,15 @@ class Trainer:
             "metrics": {
                 "heldout_loss": artifact_loss,
                 "heldout_perplexity": math.exp(min(artifact_loss, 80.0)),
+                "heldout_nll_sum": artifact_loss * self.evaluation_token_targets,
+                "heldout_target_tokens": float(self.evaluation_token_targets),
+                "heldout_utf8_bytes": float(self.begin["evaluation_set"]["text_bytes"]),
+                "heldout_bits_per_byte": (
+                    artifact_loss * self.evaluation_token_targets
+                    / (math.log(2.0) * self.begin["evaluation_set"]["text_bytes"])
+                    if self.begin["evaluation_set"]["text_bytes"] > 0
+                    else 0.0
+                ),
                 "live_compiled_heldout_loss": compiled_loss,
                 "live_eager_compute_heldout_loss": eager_compute_loss,
                 "live_eager_heldout_loss": eager_float32_loss,

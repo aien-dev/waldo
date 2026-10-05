@@ -21,7 +21,7 @@ func TestBuildAdviceUsesTelemetryToRecommendStop(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, runPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	telemetry := strings.Join(telemetryHeader, ",") + "\n" +
+	telemetry := strings.Join(telemetryHeaderV1, ",") + "\n" +
 		strings.Join([]string{"2026-08-09T18:00:00Z", "10", "run1", "pretrain", "1", "evaluation", "running", "25", "100", "250", "1000", "1.2", "1.0", "2.718", "0.001", "1000", "", "", "", "", "", "", "", "", "75", "first evaluation"}, ",") + "\n" +
 		strings.Join([]string{"2026-08-09T18:01:00Z", "70", "run1", "pretrain", "1", "evaluation", "running", "50", "100", "500", "1000", "1.4", "1.3", "3.669", "0.0008", "1200", "", "", "", "", "", "", "", "", "60", "second evaluation"}, ",") + "\n"
 	if err := os.WriteFile(filepath.Join(root, runPath, TelemetryFilename), []byte(telemetry), 0o644); err != nil {
@@ -62,7 +62,7 @@ func TestBuildAdviceDoesNotReportSelectedCheckpointAsRunProgress(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, runPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	telemetry := strings.Join(telemetryHeader, ",") + "\n" +
+	telemetry := strings.Join(telemetryHeaderV1, ",") + "\n" +
 		strings.Join([]string{"2026-10-05T14:00:00Z", "900", "run1", "pretrain", "1", "evaluation", "running", "5000", "5000", "81920000", "81920000", "1.2", "2.0940", "8.117", "0", "100000", "", "", "", "", "", "", "", "", "0", "terminal evaluation"}, ",") + "\n" +
 		strings.Join([]string{"2026-10-05T14:00:01Z", "901", "run1", "pretrain", "1", "evaluation", "complete", "1250", "5000", "20480000", "81920000", "1.1", "1.5117", "4.534", "0", "100000", "", "", "", "", "", "", "", "", "0", "selected checkpoint"}, ",") + "\n"
 	if err := os.WriteFile(filepath.Join(root, runPath, TelemetryFilename), []byte(telemetry), 0o644); err != nil {
