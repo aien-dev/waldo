@@ -12,6 +12,7 @@ script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 "$script_dir/vet.sh"
 "$script_dir/docs.sh"
 "$script_dir/python.sh"
+WALDO_CONFORMANCE_REQUIRED=0 "$script_dir/training-conformance.sh"
 "$script_dir/e2e/ingest-direct.sh"
 "$script_dir/e2e/structured-conversation.sh"
 "$script_dir/e2e/model-fake.sh"

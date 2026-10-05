@@ -41,6 +41,9 @@ if { [ -n "$hostfile" ] && [ -z "$corpus" ]; } || { [ -z "$hostfile" ] && [ -n "
   exit 2
 fi
 
+echo "testing: required independent numerical conformance gate"
+WALDO_CONFORMANCE_REQUIRED=1 "$script_dir/training-conformance.sh"
+
 echo "testing: required PyTorch training/inference acceptance gate"
 WALDO_E2E_REQUIRED=1 "$script_dir/e2e/model-pytorch.sh"
 

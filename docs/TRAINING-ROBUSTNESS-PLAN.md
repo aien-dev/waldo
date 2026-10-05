@@ -248,6 +248,14 @@ Exit gate: agreed FP32 and BF16 tolerances pass for every tensor; a resumed run
 matches uninterrupted execution within tolerance; world-size changes preserve
 the learning curve and sample accounting; the memorization control succeeds.
 
+Implemented: `testing/training-conformance.sh` compares the production shared
+PyTorch model with an independent functional oracle for logits, masked causal
+loss, every gradient, one AdamW update and optimizer state, save/reload logits,
+and next-token argmax in FP64 CPU and, when available, FP32 CUDA. It is a
+required first step of `testing/training-acceptance.sh`. BF16, real-worker
+memorization, and fixed-global-batch distributed equivalence remain blocking
+work in this phase.
+
 ### Phase 2: reproduce known learning controls
 
 Run two controls before general-corpus research:
