@@ -55,3 +55,39 @@ func TestBuildAdviceForUntrainedModel(t *testing.T) {
 		t.Fatalf("advice = %+v", report)
 	}
 }
+
+func TestBuildAdviceDoesNotReportSelectedCheckpointAsRunProgress(t *testing.T) {
+	root := t.TempDir()
+	runPath := filepath.Join("runs", "0001-pretrain-run1")
+	if err := os.MkdirAll(filepath.Join(root, runPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	telemetry := strings.Join(telemetryHeader, ",") + "\n" +
+		strings.Join([]string{"2026-10-05T14:00:00Z", "900", "run1", "pretrain", "1", "evaluation", "running", "5000", "5000", "81920000", "81920000", "1.2", "2.0940", "8.117", "0", "100000", "", "", "", "", "", "", "", "", "0", "terminal evaluation"}, ",") + "\n" +
+		strings.Join([]string{"2026-10-05T14:00:01Z", "901", "run1", "pretrain", "1", "evaluation", "complete", "1250", "5000", "20480000", "81920000", "1.1", "1.5117", "4.534", "0", "100000", "", "", "", "", "", "", "", "", "0", "selected checkpoint"}, ",") + "\n"
+	if err := os.WriteFile(filepath.Join(root, runPath, TelemetryFilename), []byte(telemetry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	selected := 1.5117
+	final := 1.2
+	inspection := Inspection{
+		Path:  root,
+		Model: ModelRecord{Name: "example", Runs: []RunPin{{ID: "run1", Stage: "pretrain", Ordinal: 1, State: RunComplete}}},
+		Runs: []RunRecord{{ID: "run1", State: RunComplete, Observation: &training.Observation{
+			Steps: 5000, ConsumedTokens: 81920000, FinalLoss: &final,
+			SelectedCheckpoint: &training.CheckpointSelection{Step: 1250, Value: selected},
+		}}},
+		RunBOMs: []RunBOM{{ID: "run1", Execution: training.Execution{Backend: training.Identity{Name: "pytorch"}}, Parameters: training.ResolvedParameters{Steps: 5000, PlannedTokenCapacity: 81920000}}},
+		BOM:     ModelBOM{Runs: []ModelBOMRun{{ID: "run1", RunBOM: filepath.ToSlash(filepath.Join(runPath, "RUN-BOM.json"))}}},
+	}
+	report, err := BuildAdvice(inspection, time.Date(2026, 10, 5, 14, 1, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Run == nil || report.Run.Step != 5000 || report.Run.ProgressPercent != 100 || report.Run.SelectedStep != 1250 {
+		t.Fatalf("advice run = %+v", report.Run)
+	}
+	if !strings.Contains(strings.Join(report.Findings, "\n"), "100.0% complete at step 5000 of 5000") {
+		t.Fatalf("findings = %v", report.Findings)
+	}
+}

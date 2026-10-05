@@ -125,10 +125,13 @@ func BuildAdvice(inspection Inspection, now time.Time) (Advice, error) {
 		return Advice{}, err
 	}
 	for _, sample := range telemetry {
-		if sample.Step > 0 {
+		// Selection and artifact-verification events may refer to an earlier
+		// best checkpoint after the run has completed. Never let those events
+		// move actual run progress backwards.
+		if sample.Step > current.Step {
 			current.Step = sample.Step
 		}
-		if sample.Tokens > 0 {
+		if sample.Tokens > current.ConsumedTokens {
 			current.ConsumedTokens = sample.Tokens
 		}
 		if sample.Loss != nil {
