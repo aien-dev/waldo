@@ -184,13 +184,41 @@ func runModelIndexForecast(context Context, paths []string, stdout, warnings io.
 
 func writeModelForecast(stdout io.Writer, report model.ResourceForecast, hostForecast model.HostForecast, compareHosts bool, architecture *model.Architecture) {
 	fmt.Fprintf(stdout, "PARAMETERS:  %s\n", humanModelParameters(report.ApproximateParameters))
-	if architecture != nil && report.ApproximateParameters > 0 {
-		tokenParameters := architecture.VocabularySize * architecture.HiddenSize
-		if !architecture.TieEmbeddings {
-			tokenParameters *= 2
+	fitness := report.Fitness
+	if architecture != nil && fitness.Architecture.TotalParameters == 0 {
+		if architecture.Validate() == nil {
+			fallback, err := model.AnalyzeArchitecture(*architecture)
+			if err == nil {
+				fitness.Architecture = fallback
+			}
+		} else {
+			tokenParameters := architecture.VocabularySize * architecture.HiddenSize
+			if !architecture.TieEmbeddings {
+				tokenParameters *= 2
+			}
+			fitness.Architecture.TokenIOParameters = tokenParameters
+			fitness.Architecture.TokenIOPercent = 100 * float64(tokenParameters) / float64(report.ApproximateParameters)
 		}
-		share := 100 * float64(tokenParameters) / float64(report.ApproximateParameters)
+	}
+	if architecture != nil && report.ApproximateParameters > 0 {
+		tokenParameters := fitness.Architecture.TokenIOParameters
+		share := fitness.Architecture.TokenIOPercent
 		fmt.Fprintf(stdout, "TOKEN I/O:   %s (%.1f%% of parameters)\n", humanModelParameters(tokenParameters), share)
+		if fitness.Architecture.TotalParameters > 0 {
+			fmt.Fprintf(stdout, "CORE:        %s (%.1f%% of parameters)\n", humanModelParameters(fitness.Architecture.NonEmbeddingParameters), 100-share)
+			fmt.Fprintf(stdout, "ALLOCATION:  attention %.1f%% / MLP %.1f%% / embedding %.1f%% / other %.1f%%\n",
+				fitness.Architecture.AttentionPercent, fitness.Architecture.MLPPercent,
+				fitness.Architecture.EmbeddingPercent, fitness.Architecture.OtherPercent)
+			fmt.Fprintf(stdout, "PROJECTIONS: Q %s / K %s / V %s / O %s per layer; %d Q heads / %d KV heads\n",
+				humanModelParameters(fitness.Architecture.QueryParametersPerLayer), humanModelParameters(fitness.Architecture.KeyParametersPerLayer),
+				humanModelParameters(fitness.Architecture.ValueParametersPerLayer), humanModelParameters(fitness.Architecture.AttentionOutputParametersPerLayer),
+				fitness.Architecture.GQAQueryHeads, fitness.Architecture.GQAKeyValueHeads)
+			fmt.Fprintf(stdout, "MLP:         %s per layer (SwiGLU gate + up + down)\n",
+				humanModelParameters(fitness.Architecture.MLPGateParametersPerLayer+fitness.Architecture.MLPUpParametersPerLayer+fitness.Architecture.MLPDownParametersPerLayer))
+			fmt.Fprintf(stdout, "NORMS/BIAS:  %s / %s; positional embeddings %s (RoPE)\n",
+				humanModelParameters(fitness.Architecture.NormalizationParameters), humanModelParameters(fitness.Architecture.BiasParameters),
+				humanModelParameters(fitness.Architecture.PositionalEmbeddingParameters))
+		}
 		if share > 50 {
 			fmt.Fprintln(stdout, "WARNING:     token input/output weights exceed 50% of model capacity")
 		}
@@ -204,6 +232,31 @@ func writeModelForecast(stdout io.Writer, report model.ResourceForecast, hostFor
 	}
 	if len(report.EpochDerivedStages) > 0 {
 		fmt.Fprintf(stdout, "EPOCHS:      %s resolve during training preflight\n", strings.Join(report.EpochDerivedStages, ", "))
+	}
+	contextFitness := fitness.Context
+	if contextFitness.ContextTokens == 0 && architecture != nil {
+		contextFitness.ContextTokens = architecture.ContextTokens
+		contextFitness.ExpectedUntrainedTokenLoss = math.Log(float64(architecture.VocabularySize))
+	}
+	if contextFitness.EffectiveContextBytes != nil {
+		fmt.Fprintf(stdout, "CONTEXT:     %d tokens = %.0f UTF-8 bytes (characters <= bytes)\n", contextFitness.ContextTokens, *contextFitness.EffectiveContextBytes)
+	} else {
+		fmt.Fprintf(stdout, "CONTEXT:     %d tokens; corpus bytes/token measurement required\n", contextFitness.ContextTokens)
+	}
+	fmt.Fprintf(stdout, "INITIAL LOSS: %.4f expected for uniform logits (ln vocabulary size)\n", contextFitness.ExpectedUntrainedTokenLoss)
+	for _, stage := range fitness.Stages {
+		fmt.Fprintf(stdout, "STAGE %s: %s tokens/step, %s steps, %.2f tokens/core parameter, warmup %.1f%%, warmdown %.1f%%\n",
+			stage.Name, humanCount(stage.GlobalTokensPerOptimizerStep), humanInteger(stage.OptimizerSteps), stage.TokensPerNonEmbeddingParameter, stage.WarmupPercent, stage.WarmdownPercent)
+	}
+	if fitness.Schema != 0 {
+		fmt.Fprintf(stdout, "COMPUTE:     %.3e FLOPs conventional 6ND; %.3e architecture-aware\n",
+			fitness.Compute.ConventionalTrainingFLOPs, fitness.Compute.ArchitectureAwareTrainingFLOPs)
+	}
+	for _, warning := range fitness.Warnings {
+		fmt.Fprintf(stdout, "WARNING:     [%s] %s\n", warning.Code, warning.Message)
+	}
+	if fitness.Prediction.Status != "" {
+		fmt.Fprintf(stdout, "PREDICTION:  %s — %s\n", fitness.Prediction.Status, fitness.Prediction.Reason)
 	}
 	fmt.Fprintln(stdout)
 	writeHostModelForecast(stdout, hostForecast)

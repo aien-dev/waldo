@@ -25,6 +25,7 @@ type ResourceForecast struct {
 	PlannedTokens         int64                   `json:"planned_tokens"`
 	EpochDerivedStages    []string                `json:"epoch_derived_stages,omitempty"`
 	TrainingFLOPs         float64                 `json:"training_flops"`
+	Fitness               FitnessAnalysis         `json:"fitness"`
 	Calibrations          []ForecastCalibration   `json:"calibrations,omitempty"`
 	Configurations        []HardwareConfiguration `json:"configurations,omitempty"`
 }
@@ -123,6 +124,11 @@ func forecastPlanWithCalibration(plan Plan, calibrations []ForecastCalibration) 
 		ApproximateParameters: parameters, PlannedTokens: plannedTokens,
 		TrainingFLOPs: trainingFLOPs,
 	}
+	fitness, err := analyzeFitness(plan, plannedTokens, trainingFLOPs)
+	if err != nil {
+		return ResourceForecast{}, err
+	}
+	report.Fitness = fitness
 	for _, stage := range plan.Stages {
 		if stage.PlannedTokens == 0 {
 			report.EpochDerivedStages = append(report.EpochDerivedStages, stage.Name)
@@ -225,6 +231,21 @@ func requiredMemoryPerGPU(plan Plan, GPUs int) (uint64, error) {
 		return 0, err
 	}
 	states = divideRoundUp(states, uint64(GPUs))
+	maxActivations, err := maximumActivationWorkspace(plan, GPUs)
+	if err != nil {
+		return 0, err
+	}
+	required, err := add(states, maxActivations, 4<<30)
+	if err != nil {
+		return 0, err
+	}
+	return required, nil
+}
+
+func maximumActivationWorkspace(plan Plan, GPUs int) (uint64, error) {
+	if GPUs <= 0 {
+		return 0, fmt.Errorf("GPU count must be positive")
+	}
 	var maxActivations uint64
 	for _, stage := range plan.Stages {
 		accumulation := max(int64(1), stage.Parameters.GradientAccumulation)
@@ -253,11 +274,7 @@ func requiredMemoryPerGPU(plan Plan, GPUs int) (uint64, error) {
 			maxActivations = activations
 		}
 	}
-	required, err := add(states, maxActivations, 4<<30)
-	if err != nil {
-		return 0, err
-	}
-	return required, nil
+	return maxActivations, nil
 }
 
 func multiplyAll(values ...uint64) (uint64, error) {
