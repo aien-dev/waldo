@@ -1,15 +1,18 @@
 # Model training experiments
 
-The active plan is the [general-foundation ladder](general-foundation/README.md).
-Run its 32.3M data ablation before spending compute on the 125.6M model.
+All current training ladders are frozen. Do not start a larger foundation run
+from this directory. The repository-wide audit found that the project must
+first prove numerical conformance, reproduce independent learning controls,
+and establish quantitative evaluation. The authoritative sequence is the
+[training validation and capability plan](../docs/TRAINING-ROBUSTNESS-PLAN.md).
 
 ## Current conclusion
 
-WALDO's training mechanics are healthy: multi-host data parallelism, weighted
-streaming, trained byte-BPE tokenizers, checkpoint selection, FP32 publication,
-reload verification, and inference have all completed successfully. The
-remaining problem is model capability per token, driven jointly by model size
-and corpus construction.
+WALDO's systems paths have completed successfully: multi-host data parallelism,
+weighted streaming, trained byte-BPE tokenizers, checkpoint selection, FP32
+publication, reload verification, and inference. These runs do not independently
+prove the model math or optimizer update, and the remaining problem cannot yet
+be attributed only to model size or corpus construction.
 
 The experiments completed so far show:
 
@@ -25,15 +28,21 @@ The experiments completed so far show:
   0/10 EOS in both greedy and temperature-0.7 suites, repeated, and frequently
   abandoned prompts. Lower loss and greater capacity learned the corpus style
   without producing stable semantics.
+- The 32.3M/1B general mixture accurately consumed its intended
+  55/25/15/5 shares and reached loss 2.9481, but only 2/15 deterministic probes
+  emitted EOS; the rest hit the token limit with severe factual errors,
+  repetition, and visible Stack Exchange and PLOS artifacts.
+- Twenty tokens per parameter is a compute-allocation heuristic, not a
+  capability guarantee. Public small general models are commonly trained far
+  beyond that point.
 
-Accordingly, the next gate changes the broad data mixture while holding the
-32.3M architecture and 1B-token budget fixed. Only a successful data ablation
-authorizes the 125.6M ladder.
+Accordingly, another mixture ablation or larger rung is not authorized. The
+next work is validation code and reference controls, not a new compose.
 
 ## Experiment directories
 
-- [`general-foundation`](general-foundation/README.md): active 32.3M data
-  ablation followed by 125.6M pilot and qualification.
+- [`general-foundation`](general-foundation/README.md): frozen after the failed
+  32.3M data ablation; do not run its 125.6M composes.
 - [`tinystories`](tinystories/README.md): completed Cosmopedia proxy and its
   failed coherence hypothesis.
 - [`experiments`](experiments/README.md): completed assistant-EOS post-training
@@ -45,15 +54,16 @@ byte-BPE foundation ladder. They remain reproducible historical inputs but are
 not the active plan. Do not continue directly to
 `0005-foundation-medium-pilot.yaml` or `0006-foundation-medium.yaml`.
 
-## Rules shared by every ladder
+## Rules shared by every future experiment
 
-1. Run only one gate at a time with a fresh model name.
+1. Register one falsifiable hypothesis and one changed variable before a run.
 2. Preserve compose, summary, run ID, telemetry, consumption, and evaluations.
-3. Evaluate temperature 0 before sampling.
-4. Falling held-out loss is necessary but never sufficient.
-5. Change one causal variable per diagnostic rung.
-6. Do not use post-training to conceal foundation incoherence or repetition.
-7. Do not silently change, relabel, or overwrite an indexed corpus or compose.
+3. Compare against an independent or public baseline with the same metric.
+4. Use quantitative gates and declared uncertainty; samples are diagnostic.
+5. Falling held-out loss is necessary but never sufficient.
+6. Failed gates stop dependent runs.
+7. Do not use post-training to conceal foundation incoherence or repetition.
+8. Do not silently change, relabel, or overwrite an indexed corpus or compose.
 
 ## Corpus and post-training policy
 
@@ -67,5 +77,5 @@ foundation passes. It should combine high-quality factual and procedural
 responses with a small format-contract component; the prior experiments show
 that format examples alone create a stopped but canned model.
 
-The detailed implementation plan, mixture, gates, and research basis are in
-the active [general-foundation README](general-foundation/README.md).
+The detailed diagnosis, implementation sequence, gates, and research basis are
+in the [training validation and capability plan](../docs/TRAINING-ROBUSTNESS-PLAN.md).

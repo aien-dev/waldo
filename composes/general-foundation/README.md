@@ -1,6 +1,18 @@
-# General-foundation ladder
+# General-foundation ladder (frozen)
 
-This is the active foundation experiment. It starts with a controlled data
+**Status: failed at Gate 1 and frozen. Do not run Gate 2 or Gate 3.** The
+32.3M/1B general-mixture run accurately consumed the requested mixture and
+reached held-out loss 2.9481, but failed the behavioral gate with severe
+repetition, factual errors, and source artifacts. The full audit concluded
+that another compose cannot distinguish trainer correctness, recipe, data,
+undertraining, and unrealistic capability expectations.
+
+The next work is defined by the
+[training validation and capability plan](../../docs/TRAINING-ROBUSTNESS-PLAN.md).
+This file preserves the original hypothesis and procedure as historical
+evidence.
+
+This was the active foundation experiment. It starts with a controlled data
 ablation at 32.3M parameters, then promotes one fixed broad mixture to a 125.6M
 pilot and qualification run. Run one gate at a time and retain every summary,
 consumption report, telemetry file, and evaluation output.
