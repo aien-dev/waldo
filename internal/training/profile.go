@@ -250,6 +250,15 @@ func resolveParameters(parameters Parameters, steps, requestedTokens int64) (Res
 		order = "corpus-balanced-shuffle-v1"
 		selection = "stratified-lowest-sha256-v1"
 	}
+	if parameters.EvaluationSelection != "" {
+		selection = parameters.EvaluationSelection
+	}
+	if selection != "lowest-sha256-v1" && selection != "stratified-lowest-sha256-v1" && selection != "contiguous-tail-v1" {
+		return ResolvedParameters{}, fmt.Errorf("evaluation_selection must be lowest-sha256-v1, stratified-lowest-sha256-v1, or contiguous-tail-v1")
+	}
+	if selection == "contiguous-tail-v1" && profile != ShuffledProfile {
+		return ResolvedParameters{}, fmt.Errorf("evaluation_selection contiguous-tail-v1 requires training profile %q", ShuffledProfile)
+	}
 	var weights map[string]uint64
 	if len(parameters.CorpusWeights) != 0 {
 		weights = make(map[string]uint64, len(parameters.CorpusWeights))

@@ -486,8 +486,8 @@ indexed reference totals; run and evaluation evidence describe actual training
 consumption. If the combined filters eliminate every row from one selected
 corpus, preflight warns that the corpus will contribute zero training tokens.
 
-After each successful stage, WALDO prints the input, included, held-out, and
-skipped record counts. When filtering required a row scan, it also prints
+After each successful stage, WALDO prints the input, included, fully held-out,
+partially held-out, and skipped record counts. When filtering required a row scan, it also prints
 included and skipped counts grouped by effective license. The same selection
 accounting is preserved in the stage preflight artifact.
 The corpus remains in the selection BOM for auditability, while observed
@@ -526,6 +526,7 @@ must use one representation or the other, never both.
 | `shuffle_buffer_records` | no | default `1024`; `1..1000000` | Maximum records retained by deterministic bounded shuffle. |
 | `shuffle_buffer_bytes` | no | default 64 MiB; `1 B..16 GiB` | Maximum record text retained by deterministic bounded shuffle. |
 | `corpus_weights` | only for `causal-pretrain-weighted`; legacy form | each weight `1..1000000` | Integer relative token exposure keyed by every selected corpus path. Configured corpus `weight` fields are preferred. |
+| `evaluation_selection` | no | Profile default | `lowest-sha256-v1` and `stratified-lowest-sha256-v1` hold out complete records. `contiguous-tail-v1` requires the shuffled profile and exactly one eligible text record; it trains on the leading portion and evaluates the trailing `evaluation_fraction`. |
 | `evaluation_fraction` | no | default `0.01`; `0 <= value < 1` | Candidate fraction for deterministic held-out selection. |
 | `evaluation_max_records` | no | default `256`; `0..1000000` | Held-out record cap. |
 | `evaluation_max_bytes` | no | default 1 MiB; `0 B..16 GiB` | Held-out text-byte cap. |
@@ -553,6 +554,12 @@ its declared budget.
 Setting any one of `evaluation_fraction`, `evaluation_max_records`, or
 `evaluation_max_bytes` to zero disables the held-out set and resolves all
 three values to zero.
+
+`contiguous-tail-v1` is the narrow single-stream control for corpora such as
+Tiny Shakespeare. Its UTF-8 byte boundary, canonical row identity, held-out
+byte count, and tokenizer targets are pinned in stage preflight. It does not
+split the indexed record or add intermediate EOS boundaries. The held-out tail
+must fit `evaluation_max_bytes`; WALDO fails rather than truncating it.
 
 ### Fixed profile behavior
 

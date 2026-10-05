@@ -270,6 +270,7 @@ type Parameters struct {
 	ShuffleBufferBytes      *int64            `json:"shuffle_buffer_bytes,omitempty" yaml:"shuffle_buffer_bytes,omitempty"`
 	CorpusWeights           map[string]uint64 `json:"corpus_weights,omitempty" yaml:"corpus_weights,omitempty"`
 	EvaluationFraction      *float64          `json:"evaluation_fraction,omitempty" yaml:"evaluation_fraction,omitempty"`
+	EvaluationSelection     string            `json:"evaluation_selection,omitempty" yaml:"evaluation_selection,omitempty"`
 	EvaluationMaxRecords    *int              `json:"evaluation_max_records,omitempty" yaml:"evaluation_max_records,omitempty"`
 	EvaluationMaxBytes      *int64            `json:"evaluation_max_bytes,omitempty" yaml:"evaluation_max_bytes,omitempty"`
 }

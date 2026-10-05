@@ -448,7 +448,10 @@ Interactive terminals receive byte-level materialization progress; redirected
 logs receive one completion line for every shard. The optional audit is shown
 as a separate phase. Deterministic held-out selection enumerates the row counts
 pinned by the corpus BOM, reports shard and record progress, and reads only the
-bounded candidate rows before backend selection. While a compose is running,
+bounded candidate rows before backend selection. The optional
+`contiguous-tail-v1` policy instead requires exactly one eligible text row and
+pins a UTF-8 byte offset that keeps its prefix in training and its suffix in
+evaluation. While a compose is running,
 ordinary `model list` and `model summary` operations see its current state at
 the standard model path.
 After Ctrl-C or process loss, repeating the exact command discovers the active
@@ -492,7 +495,8 @@ attempt without one remains terminal and is restarted as a new run.
 - `RUN-BOM.json` embeds the hash-pinned corpus OpenWALDO BOM and pins
   architecture, backend, objective, parameters, and execution environment
   before launch. It also pins `PREFLIGHT.json`, which records the exact
-  held-out row selection and any epoch-derived optimizer-step count. An exact
+  held-out row selection, any partial-record byte split, and any epoch-derived
+  optimizer-step count. An exact
   retry reuses that verified result instead of rescanning every record; a
   changed corpus, filter, tokenizer, architecture, or stage rebuilds it.
   Runs created before this artifact existed remain valid and perform the scan.

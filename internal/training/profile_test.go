@@ -130,6 +130,28 @@ func TestBalancedProfilePinsCorpusBalancedDataAndEvaluation(t *testing.T) {
 	}
 }
 
+func TestResolveParametersAcceptsContiguousTailEvaluation(t *testing.T) {
+	resolved, err := ResolveParameters(Parameters{
+		Steps: 10, BatchSize: 2, SequenceLength: 8, LearningRate: 0.001, Seed: 42,
+		EvaluationSelection: "contiguous-tail-v1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Evaluation == nil || resolved.Evaluation.Selection != "contiguous-tail-v1" {
+		t.Fatalf("evaluation policy = %+v", resolved.Evaluation)
+	}
+	bad := Parameters{Steps: 10, BatchSize: 2, SequenceLength: 8, LearningRate: 0.001, EvaluationSelection: "unknown"}
+	if _, err := ResolveParameters(bad); err == nil {
+		t.Fatal("unknown evaluation selection accepted")
+	}
+	bad.Profile = BalancedProfile
+	bad.EvaluationSelection = "contiguous-tail-v1"
+	if _, err := ResolveParameters(bad); err == nil {
+		t.Fatal("balanced profile accepted contiguous-tail evaluation")
+	}
+}
+
 func TestWeightedProfilePinsDeclaredCorpusWeights(t *testing.T) {
 	parameters := Parameters{Profile: WeightedProfile, Steps: 10, BatchSize: 2, SequenceLength: 8, LearningRate: 0.001, Seed: 42, CorpusWeights: map[string]uint64{"corpus-a": 3, "corpus-b": 1}}
 	resolved, err := ResolveParameters(parameters)
@@ -213,6 +235,62 @@ func TestRecordPartitionPinsAndExcludesHeldOutRecords(t *testing.T) {
 	}
 	if targets, err := first.TrainingByteTargets(context.Background()); err != nil || targets <= 0 {
 		t.Fatalf("training targets = %d, err = %v", targets, err)
+	}
+}
+
+func TestRecordPartitionContiguousTailSplitsOneCanonicalRecord(t *testing.T) {
+	input := writeTrainingShard(t, []string{"abcdefghij"})
+	fraction := 0.2
+	maxRecords := 1
+	maxBytes := int64(100)
+	parameters, err := ResolveParameters(Parameters{
+		Steps: 1, BatchSize: 1, SequenceLength: 4, LearningRate: 0.001, Seed: 42,
+		EvaluationSelection: "contiguous-tail-v1", EvaluationFraction: &fraction,
+		EvaluationMaxRecords: &maxRecords, EvaluationMaxBytes: &maxBytes,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partition, err := NewRecordPartition([]Input{input}, parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if partition.Evaluation.Records != 1 || partition.Evaluation.TextBytes != 2 || partition.Evaluation.TokenTargets != 2 {
+		t.Fatalf("evaluation = %+v", partition.Evaluation)
+	}
+	var trainingText, evaluationText string
+	training, err := partition.TrainingRecords()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := training.Stream(context.Background(), func(value Record) error { trainingText += value.Text; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := partition.EvaluationRecords().Stream(context.Background(), func(value Record) error { evaluationText += value.Text; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if trainingText != "abcdefgh" || evaluationText != "ij" {
+		t.Fatalf("partition text = training %q, evaluation %q", trainingText, evaluationText)
+	}
+	summary := partition.SelectionSummary()
+	if summary.HeldOutRecords != 0 || summary.PartiallyHeldOutRecords != 1 {
+		t.Fatalf("selection summary = %+v", summary)
+	}
+	snapshot := partition.Preflight(strings.Repeat("a", 64), parameters, false)
+	restored, err := NewRecordPartitionFromPreflight(context.Background(), []Input{input}, parameters, byteCodec{}, "causal-language-modeling", ConversationTransform{}, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoredTraining string
+	restoredSource, err := restored.TrainingRecords()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restoredSource.Stream(context.Background(), func(value Record) error { restoredTraining += value.Text; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if restoredTraining != trainingText || restored.Evaluation != partition.Evaluation {
+		t.Fatalf("restored partition = training %q evaluation %+v", restoredTraining, restored.Evaluation)
 	}
 }
 

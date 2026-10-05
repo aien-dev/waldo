@@ -52,7 +52,11 @@ func (Fake) Run(ctx context.Context, request Request) (Observation, error) {
 		return Observation{}, err
 	}
 	if request.BOM.RecordFilter == nil {
-		expectedTrainingRecords := (request.BOM.Totals.Docs - request.EvaluationSet.Records) * request.Parameters.Epochs
+		fullyHeldOut := request.EvaluationSet.Records
+		if request.EvaluationSet.Selection == "contiguous-tail-v1" {
+			fullyHeldOut = 0
+		}
+		expectedTrainingRecords := (request.BOM.Totals.Docs - fullyHeldOut) * request.Parameters.Epochs
 		if records != expectedTrainingRecords {
 			return Observation{}, fmt.Errorf("canonical training stream contains %d records, expected %d after held-out selection", records, expectedTrainingRecords)
 		}

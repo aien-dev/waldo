@@ -271,7 +271,11 @@ func (builder Builder) Train(ctx context.Context, name string, prepared Prepared
 		if err != nil {
 			return Inspection{}, fmt.Errorf("stage %s held-out evaluation partition: %w", stage.Name, err)
 		}
-		builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("selected %d held-out records (%s text)", partition.Evaluation.Records, byteCount(partition.Evaluation.TextBytes))})
+		evaluationKind := "held-out records"
+		if resolvedParameters.Evaluation != nil && resolvedParameters.Evaluation.Selection == "contiguous-tail-v1" {
+			evaluationKind = "partially held-out records"
+		}
+		builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("selected %d %s (%s text)", partition.Evaluation.Records, evaluationKind, byteCount(partition.Evaluation.TextBytes))})
 		if stage.Parameters.Steps == 0 && stage.Parameters.Tokens == 0 {
 			builder.report(Progress{Phase: "preflight", Stage: stage.Name, Message: fmt.Sprintf("deriving optimizer steps from %d epochs", resolvedParameters.Epochs)})
 			derivedSteps, err := partition.TrainingSteps(ctx)
@@ -467,7 +471,11 @@ func (builder Builder) reportRecordSelection(stage string, summary training.Reco
 		return
 	}
 	available := summary.IncludedRecords - summary.HeldOutRecords
-	builder.report(Progress{Phase: "summary", Stage: stage, Message: fmt.Sprintf("data selection: %d input, %d included (%d available for training, %d held out), %d skipped", summary.InputRecords, summary.IncludedRecords, available, summary.HeldOutRecords, summary.SkippedRecords)})
+	detail := fmt.Sprintf("%d available for training, %d held out", available, summary.HeldOutRecords)
+	if summary.PartiallyHeldOutRecords > 0 {
+		detail += fmt.Sprintf(", %d partially held out", summary.PartiallyHeldOutRecords)
+	}
+	builder.report(Progress{Phase: "summary", Stage: stage, Message: fmt.Sprintf("data selection: %d input, %d included (%s), %d skipped", summary.InputRecords, summary.IncludedRecords, detail, summary.SkippedRecords)})
 	for _, group := range []struct {
 		label  string
 		counts map[string]int64

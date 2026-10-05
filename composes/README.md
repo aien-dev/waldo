@@ -39,6 +39,11 @@ The experiments completed so far show:
 Accordingly, another mixture ablation or larger rung is not authorized. The
 next work is validation code and reference controls, not a new compose.
 
+The first authorized reference control is
+[`tiny-shakespeare`](tiny-shakespeare/README.md). It uses one known corpus and
+a deterministic contiguous-tail evaluation split to test the complete WALDO
+training path without a data mixture.
+
 ## Experiment directories
 
 - [`general-foundation`](general-foundation/README.md): frozen after the failed
@@ -47,6 +52,8 @@ next work is validation code and reference controls, not a new compose.
   failed coherence hypothesis.
 - [`experiments`](experiments/README.md): completed assistant-EOS post-training
   diagnostics.
+- [`tiny-shakespeare`](tiny-shakespeare/README.md): active end-to-end reference
+  control.
 - [`archive`](archive): retired ladders and preserved failure evidence.
 
 The numbered YAML files still at this directory's root are the previous

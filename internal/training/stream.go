@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/openwaldo/waldo/internal/record"
 	"github.com/openwaldo/waldo/internal/shard"
@@ -42,6 +43,7 @@ type Record struct {
 type RecordPartition struct {
 	Evaluation        EvaluationSet
 	selected          map[string]bool
+	evaluationSplits  map[string]int64
 	eligibleRecords   map[string]int64
 	selectionSummary  RecordSelectionSummary
 	evaluationRecords []Record
@@ -56,18 +58,24 @@ type RecordPartition struct {
 // IncludedRecords includes held-out evaluation records; the records available
 // to the trainer are therefore IncludedRecords minus HeldOutRecords.
 type RecordSelectionSummary struct {
-	InputRecords     int64            `json:"input_records"`
-	IncludedRecords  int64            `json:"included_records"`
-	SkippedRecords   int64            `json:"skipped_records"`
-	HeldOutRecords   int64            `json:"held_out_records,omitempty"`
-	IncludedLicenses map[string]int64 `json:"included_licenses,omitempty"`
-	SkippedLicenses  map[string]int64 `json:"skipped_licenses,omitempty"`
+	InputRecords            int64            `json:"input_records"`
+	IncludedRecords         int64            `json:"included_records"`
+	SkippedRecords          int64            `json:"skipped_records"`
+	HeldOutRecords          int64            `json:"held_out_records,omitempty"`
+	PartiallyHeldOutRecords int64            `json:"partially_held_out_records,omitempty"`
+	IncludedLicenses        map[string]int64 `json:"included_licenses,omitempty"`
+	SkippedLicenses         map[string]int64 `json:"skipped_licenses,omitempty"`
 }
 
 const (
 	StagePreflightKind   = "openwaldo-stage-preflight"
-	StagePreflightSchema = 1
+	StagePreflightSchema = 2
 )
+
+type EvaluationSplit struct {
+	SelectionID string `json:"selection_id"`
+	ByteOffset  int64  `json:"byte_offset"`
+}
 
 // StagePreflight is the immutable result of the expensive, deterministic
 // record-partition scan. The model run BOM pins the serialized artifact.
@@ -77,6 +85,7 @@ type StagePreflight struct {
 	IdentitySHA256   string                 `json:"identity_sha256"`
 	Evaluation       EvaluationSet          `json:"evaluation"`
 	SelectedRecords  []string               `json:"selected_records"`
+	EvaluationSplits []EvaluationSplit      `json:"evaluation_splits,omitempty"`
 	EligibleRecords  map[string]int64       `json:"eligible_records,omitempty"`
 	SelectionSummary RecordSelectionSummary `json:"selection_summary,omitempty"`
 	Parameters       ResolvedParameters     `json:"parameters"`
@@ -84,7 +93,7 @@ type StagePreflight struct {
 }
 
 func (snapshot StagePreflight) Validate() error {
-	if snapshot.Kind != StagePreflightKind || snapshot.Schema != StagePreflightSchema {
+	if snapshot.Kind != StagePreflightKind || snapshot.Schema < 1 || snapshot.Schema > StagePreflightSchema {
 		return fmt.Errorf("unsupported stage preflight artifact %q schema %d", snapshot.Kind, snapshot.Schema)
 	}
 	identity, err := hex.DecodeString(snapshot.IdentitySHA256)
@@ -98,6 +107,18 @@ func (snapshot StagePreflight) Validate() error {
 		if index > 0 && key <= snapshot.SelectedRecords[index-1] {
 			return fmt.Errorf("stage preflight selected record IDs are not unique and sorted")
 		}
+	}
+	for index, split := range snapshot.EvaluationSplits {
+		if split.SelectionID == "" || split.ByteOffset <= 0 || index > 0 && split.SelectionID <= snapshot.EvaluationSplits[index-1].SelectionID {
+			return fmt.Errorf("stage preflight evaluation splits are invalid")
+		}
+		position, found := slices.BinarySearch(snapshot.SelectedRecords, split.SelectionID)
+		if !found || position < 0 {
+			return fmt.Errorf("stage preflight evaluation split is not selected")
+		}
+	}
+	if snapshot.Evaluation.Selection == "contiguous-tail-v1" && len(snapshot.EvaluationSplits) != 1 {
+		return fmt.Errorf("stage preflight contiguous-tail evaluation requires one split")
 	}
 	for corpus, records := range snapshot.EligibleRecords {
 		if strings.TrimSpace(corpus) == "" || records < 0 {
@@ -118,9 +139,14 @@ func (partition RecordPartition) Preflight(identity string, parameters ResolvedP
 		selected = append(selected, key)
 	}
 	sort.Strings(selected)
+	splits := make([]EvaluationSplit, 0, len(partition.evaluationSplits))
+	for key, offset := range partition.evaluationSplits {
+		splits = append(splits, EvaluationSplit{SelectionID: key, ByteOffset: offset})
+	}
+	sort.Slice(splits, func(i, j int) bool { return splits[i].SelectionID < splits[j].SelectionID })
 	return StagePreflight{
 		Kind: StagePreflightKind, Schema: StagePreflightSchema, IdentitySHA256: identity,
-		Evaluation: partition.Evaluation, SelectedRecords: selected, EligibleRecords: cloneRecordCounts(partition.eligibleRecords), SelectionSummary: partition.SelectionSummary(), Parameters: parameters,
+		Evaluation: partition.Evaluation, SelectedRecords: selected, EvaluationSplits: splits, EligibleRecords: cloneRecordCounts(partition.eligibleRecords), SelectionSummary: partition.SelectionSummary(), Parameters: parameters,
 		CapacityVerified: capacityVerified,
 	}
 }
@@ -134,10 +160,10 @@ func (partition RecordPartition) SelectionSummary() RecordSelectionSummary {
 }
 
 func (summary RecordSelectionSummary) validate() error {
-	if summary.InputRecords == 0 && summary.IncludedRecords == 0 && summary.SkippedRecords == 0 && summary.HeldOutRecords == 0 && len(summary.IncludedLicenses) == 0 && len(summary.SkippedLicenses) == 0 {
+	if summary.InputRecords == 0 && summary.IncludedRecords == 0 && summary.SkippedRecords == 0 && summary.HeldOutRecords == 0 && summary.PartiallyHeldOutRecords == 0 && len(summary.IncludedLicenses) == 0 && len(summary.SkippedLicenses) == 0 {
 		return nil // Legacy schema-1 preflight without selection accounting.
 	}
-	if summary.InputRecords < 0 || summary.IncludedRecords < 0 || summary.SkippedRecords < 0 || summary.HeldOutRecords < 0 || summary.IncludedRecords+summary.SkippedRecords != summary.InputRecords || summary.HeldOutRecords > summary.IncludedRecords {
+	if summary.InputRecords < 0 || summary.IncludedRecords < 0 || summary.SkippedRecords < 0 || summary.HeldOutRecords < 0 || summary.PartiallyHeldOutRecords < 0 || summary.IncludedRecords+summary.SkippedRecords != summary.InputRecords || summary.HeldOutRecords+summary.PartiallyHeldOutRecords > summary.IncludedRecords {
 		return fmt.Errorf("record counts are inconsistent")
 	}
 	for label, values := range map[string]map[string]int64{"included": summary.IncludedLicenses, "skipped": summary.SkippedLicenses} {
@@ -220,6 +246,10 @@ func NewRecordPartitionFromPreflight(ctx context.Context, inputs []Input, parame
 		}
 		selected = append(selected, evaluationCandidate{key: key, corpus: ordered[inputPosition].Corpus, input: inputPosition, row: row})
 	}
+	splitOffsets := make(map[string]int64, len(snapshot.EvaluationSplits))
+	for _, split := range snapshot.EvaluationSplits {
+		splitOffsets[split.SelectionID] = split.ByteOffset
+	}
 	sizes, err := evaluationCandidateSizes(ctx, ordered, selected)
 	if err != nil {
 		return RecordPartition{}, err
@@ -227,9 +257,15 @@ func NewRecordPartitionFromPreflight(ctx context.Context, inputs []Input, parame
 	var textBytes int64
 	for index := range selected {
 		selected[index].textBytes = sizes[selected[index].key]
+		if offset, ok := splitOffsets[selected[index].key]; ok {
+			if offset <= 0 || offset >= selected[index].textBytes {
+				return RecordPartition{}, fmt.Errorf("stage preflight evaluation split offset is outside its record")
+			}
+			selected[index].textBytes -= offset
+		}
 		textBytes += selected[index].textBytes
 	}
-	records, tokenTargets, err := readEvaluationRecords(ctx, ordered, selected, codec, objective, conversation)
+	records, tokenTargets, err := readEvaluationRecords(ctx, ordered, selected, splitOffsets, codec, objective, conversation)
 	if err != nil {
 		return RecordPartition{}, err
 	}
@@ -237,7 +273,11 @@ func NewRecordPartitionFromPreflight(ctx context.Context, inputs []Input, parame
 	selectedMap := make(map[string]bool, len(selected))
 	for _, candidate := range selected {
 		selectedMap[candidate.key] = true
-		_, _ = fmt.Fprintln(hasher, candidate.key)
+		if offset, ok := splitOffsets[candidate.key]; ok {
+			_, _ = fmt.Fprintf(hasher, "%s:%d\n", candidate.key, offset)
+		} else {
+			_, _ = fmt.Fprintln(hasher, candidate.key)
+		}
 	}
 	evaluation := EvaluationSet{
 		Selection: snapshot.Evaluation.Selection, Seed: snapshot.Evaluation.Seed,
@@ -248,7 +288,7 @@ func NewRecordPartitionFromPreflight(ctx context.Context, inputs []Input, parame
 		return RecordPartition{}, fmt.Errorf("stage preflight held-out evidence does not match the selected records")
 	}
 	return RecordPartition{
-		Evaluation: evaluation, selected: selectedMap, eligibleRecords: cloneRecordCounts(snapshot.EligibleRecords), selectionSummary: snapshot.SelectionSummary, evaluationRecords: records,
+		Evaluation: evaluation, selected: selectedMap, evaluationSplits: splitOffsets, eligibleRecords: cloneRecordCounts(snapshot.EligibleRecords), selectionSummary: snapshot.SelectionSummary, evaluationRecords: records,
 		inputs: ordered, parameters: parameters, codec: codec, objective: objective, conversation: conversation,
 	}, nil
 }
@@ -438,6 +478,49 @@ func NewRecordPartitionContextWithTransform(ctx context.Context, inputs []Input,
 		partition.Evaluation = EvaluationSet{Selection: policy.Selection, Seed: parameters.Seed, SHA256: emptyEvaluationDigest()}
 		return partition, nil
 	}
+	if policy.Selection == "contiguous-tail-v1" {
+		if objective != "causal-language-modeling" {
+			return RecordPartition{}, fmt.Errorf("contiguous-tail-v1 evaluation requires causal-language-modeling")
+		}
+		if records != 1 || candidates.Len() != 1 {
+			return RecordPartition{}, fmt.Errorf("contiguous-tail-v1 evaluation requires exactly one eligible canonical record; found %d", records)
+		}
+		candidate := candidates[0]
+		var text string
+		err := shard.ReadRecordsAt(ordered[candidate.input].Path, []int64{candidate.row}, func(_ int64, view shard.RecordView) error {
+			text = view.Text
+			return nil
+		})
+		if err != nil {
+			return RecordPartition{}, fmt.Errorf("read contiguous-tail evaluation record: %w", err)
+		}
+		offset := int64(math.Floor(float64(len(text)) * (1 - policy.Fraction)))
+		for offset < int64(len(text)) && offset > 0 && !utf8.RuneStart(text[offset]) {
+			offset++
+		}
+		if offset <= 0 || offset >= int64(len(text)) || !utf8.ValidString(text[:offset]) || !utf8.ValidString(text[offset:]) {
+			return RecordPartition{}, fmt.Errorf("contiguous-tail-v1 evaluation cannot split the eligible record at fraction %.6f", policy.Fraction)
+		}
+		evaluationBytes := int64(len(text)) - offset
+		if evaluationBytes > policy.MaxBytes {
+			return RecordPartition{}, fmt.Errorf("contiguous-tail-v1 evaluation needs %d bytes, exceeding evaluation_max_bytes=%d", evaluationBytes, policy.MaxBytes)
+		}
+		partition.evaluationSplits = map[string]int64{candidate.key: offset}
+		partition.selected[candidate.key] = true
+		partition.selectionSummary.PartiallyHeldOutRecords = 1
+		records, tokenTargets, err := readEvaluationRecords(ctx, ordered, []evaluationCandidate{candidate}, partition.evaluationSplits, codec, objective, conversation)
+		if err != nil {
+			return RecordPartition{}, err
+		}
+		hasher := sha256.New()
+		_, _ = fmt.Fprintf(hasher, "%s:%d\n", candidate.key, offset)
+		partition.evaluationRecords = records
+		partition.Evaluation = EvaluationSet{
+			Selection: policy.Selection, Seed: parameters.Seed, Records: 1,
+			TokenTargets: tokenTargets, TextBytes: evaluationBytes, SHA256: hex.EncodeToString(hasher.Sum(nil)),
+		}
+		return partition, nil
+	}
 	desired := int(math.Ceil(float64(records) * policy.Fraction))
 	if records < 2 {
 		desired = 0
@@ -509,7 +592,7 @@ func NewRecordPartitionContextWithTransform(ctx context.Context, inputs []Input,
 	if desired > 0 && len(selected) == 0 {
 		return RecordPartition{}, fmt.Errorf("no held-out record fits evaluation_max_bytes=%d; increase the limit or explicitly disable evaluation", policy.MaxBytes)
 	}
-	evaluationRecords, tokenTargets, err := readEvaluationRecords(ctx, ordered, selected, codec, objective, conversation)
+	evaluationRecords, tokenTargets, err := readEvaluationRecords(ctx, ordered, selected, nil, codec, objective, conversation)
 	if err != nil {
 		return RecordPartition{}, err
 	}
@@ -576,7 +659,7 @@ func evaluationCandidateSizes(ctx context.Context, inputs []Input, candidates []
 	return sizes, nil
 }
 
-func readEvaluationRecords(ctx context.Context, inputs []Input, selected []evaluationCandidate, codec TokenCodec, objective string, conversation ConversationTransform) ([]Record, int64, error) {
+func readEvaluationRecords(ctx context.Context, inputs []Input, selected []evaluationCandidate, splitOffsets map[string]int64, codec TokenCodec, objective string, conversation ConversationTransform) ([]Record, int64, error) {
 	grouped := make(map[int][]evaluationCandidate)
 	for _, candidate := range selected {
 		grouped[candidate.input] = append(grouped[candidate.input], candidate)
@@ -601,8 +684,14 @@ func readEvaluationRecords(ctx context.Context, inputs []Input, selected []evalu
 				return err
 			}
 			record := recordFromView(input, row, view)
+			if offset, ok := splitOffsets[record.SelectionID]; ok {
+				if offset <= 0 || offset >= int64(len(record.Text)) || !utf8.ValidString(record.Text[:offset]) || !utf8.ValidString(record.Text[offset:]) {
+					return fmt.Errorf("evaluation split for %s is outside a UTF-8 record boundary", record.SelectionID)
+				}
+				record.Text = record.Text[offset:]
+			}
 			if record.Conversation == nil && objective == "causal-language-modeling" {
-				tokenTargets += int64(codec.Count(view.Text))
+				tokenTargets += int64(codec.Count(record.Text))
 				records = append(records, record)
 				return nil
 			}
@@ -630,7 +719,7 @@ func (partition RecordPartition) TrainingRecords() (RecordSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	return filteredRecordSource{source: source, include: func(record Record) bool { return !partition.selected[record.SelectionID] }}, nil
+	return partitionedRecordSource{source: source, partition: partition}, nil
 }
 
 func (partition RecordPartition) EvaluationRecords() RecordSource {
@@ -639,7 +728,14 @@ func (partition RecordPartition) EvaluationRecords() RecordSource {
 
 func (partition RecordPartition) TrainingByteTargets(ctx context.Context) (int64, error) {
 	var perEpoch int64
-	err := rawRecordSource{inputs: partition.inputs, include: func(record Record) bool { return !partition.selected[record.SelectionID] }}.Stream(ctx, func(record Record) error {
+	err := rawRecordSource{inputs: partition.inputs}.Stream(ctx, func(record Record) error {
+		record, keep, err := partition.trainingRecord(record)
+		if err != nil {
+			return err
+		}
+		if !keep {
+			return nil
+		}
 		_, mask, err := tokenizeRecord(record, partition.codec, partition.objective, partition.conversation)
 		if err != nil {
 			return err
@@ -785,15 +881,16 @@ type epochRecordSource interface {
 	streamEpoch(context.Context, int64, func(Record) error) error
 }
 
-type filteredEpochRecordSource struct {
-	source  epochRecordSource
-	include func(Record) bool
+type partitionedEpochRecordSource struct {
+	source    epochRecordSource
+	partition RecordPartition
 }
 
-func (source filteredEpochRecordSource) streamEpoch(ctx context.Context, epoch int64, consume func(Record) error) error {
+func (source partitionedEpochRecordSource) streamEpoch(ctx context.Context, epoch int64, consume func(Record) error) error {
 	return source.source.streamEpoch(ctx, epoch, func(record Record) error {
-		if !source.include(record) {
-			return nil
+		record, keep, err := source.partition.trainingRecord(record)
+		if err != nil || !keep {
+			return err
 		}
 		return consume(record)
 	})
@@ -808,9 +905,7 @@ func (partition RecordPartition) capacityEpochSource() (epochRecordSource, error
 	if !ok {
 		return nil, fmt.Errorf("canonical record source does not support incremental epoch scans")
 	}
-	return filteredEpochRecordSource{source: source, include: func(record Record) bool {
-		return !partition.selected[record.SelectionID]
-	}}, nil
+	return partitionedEpochRecordSource{source: source, partition: partition}, nil
 }
 
 // TrainingSteps scans the finite epoch stream and returns its exact optimizer
@@ -906,9 +1001,9 @@ func (packer *sequenceCapacityPacker) terminalSequences() int64 {
 	return sequences
 }
 
-type filteredRecordSource struct {
-	source  RecordSource
-	include func(Record) bool
+type partitionedRecordSource struct {
+	source    RecordSource
+	partition RecordPartition
 }
 
 type sliceRecordSource []Record
@@ -925,13 +1020,28 @@ func (source sliceRecordSource) Stream(ctx context.Context, consume func(Record)
 	return nil
 }
 
-func (source filteredRecordSource) Stream(ctx context.Context, consume func(Record) error) error {
+func (source partitionedRecordSource) Stream(ctx context.Context, consume func(Record) error) error {
 	return source.source.Stream(ctx, func(record Record) error {
-		if !source.include(record) {
-			return nil
+		record, keep, err := source.partition.trainingRecord(record)
+		if err != nil || !keep {
+			return err
 		}
 		return consume(record)
 	})
+}
+
+func (partition RecordPartition) trainingRecord(record Record) (Record, bool, error) {
+	if offset, ok := partition.evaluationSplits[record.SelectionID]; ok {
+		if record.Conversation != nil {
+			return Record{}, false, fmt.Errorf("contiguous evaluation split cannot partition a conversation record")
+		}
+		if offset <= 0 || offset >= int64(len(record.Text)) || !utf8.ValidString(record.Text[:offset]) {
+			return Record{}, false, fmt.Errorf("training split for %s is outside a UTF-8 record boundary", record.SelectionID)
+		}
+		record.Text = record.Text[:offset]
+		return record, true, nil
+	}
+	return record, !partition.selected[record.SelectionID], nil
 }
 
 type rawRecordSource struct {
