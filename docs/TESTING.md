@@ -46,6 +46,7 @@ Individual end-to-end tests are available under `testing/e2e/`:
 ./testing/e2e/model-fake.sh
 ./testing/e2e/model-mlx.sh
 ./testing/e2e/model-pytorch.sh
+./testing/e2e/model-pytorch-memorization.sh
 ./testing/e2e/model-torchtitan.sh
 ./testing/e2e/model-torchtitan-multinode.sh
 ```
@@ -79,7 +80,13 @@ removes it after success, and preserves it plus its temporary compose after a
 failure. It does not ingest or publish test corpus objects.
 
 The acceptance script runs numerical conformance before it starts any training
-lifecycle, so a reference-math failure stops the GPU tests immediately.
+lifecycle, so a reference-math failure stops the GPU tests immediately. It then
+runs a disposable compose-driven memorization control through the normal
+`waldo model train` interface. That control must reduce held-out loss by at
+least 90%, reach a held-out loss no greater than 0.25, reproduce the fixed
+held-out continuation, and terminate it with EOS. This distinguishes a backend
+that can merely execute from one that can demonstrably learn and publish the
+learned weights.
 
 ## Live tests
 

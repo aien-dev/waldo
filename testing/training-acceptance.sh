@@ -47,14 +47,17 @@ WALDO_CONFORMANCE_REQUIRED=1 "$script_dir/training-conformance.sh"
 echo "testing: required PyTorch training/inference acceptance gate"
 WALDO_E2E_REQUIRED=1 "$script_dir/e2e/model-pytorch.sh"
 
+echo "testing: required compose-driven PyTorch memorization gate"
+WALDO_E2E_REQUIRED=1 "$script_dir/e2e/model-pytorch-memorization.sh"
+
 echo "testing: required TorchTitan training/inference acceptance gate"
 WALDO_E2E_REQUIRED=1 "$script_dir/e2e/model-torchtitan.sh"
 
 if [ -n "$hostfile" ]; then
   echo "testing: required TorchTitan hostfile acceptance gate"
   "$script_dir/e2e/model-torchtitan-hostfile.sh" "$hostfile" "$corpus"
-  echo "Training acceptance passed: local and hostfile training, compiled, eager-compute, eager-FP32, persisted-FP32, and chat paths agree."
+  echo "Training acceptance passed: numerical conformance, deterministic learning, local and hostfile training, compiled, eager-compute, eager-FP32, persisted-FP32, and chat paths agree."
 else
-  echo "Local training acceptance passed: compiled, eager-compute, eager-FP32, persisted-FP32, and chat paths agree."
+  echo "Local training acceptance passed: numerical conformance, deterministic learning, compiled, eager-compute, eager-FP32, persisted-FP32, and chat paths agree."
   echo "Multi-host acceptance was not tested; rerun with --hostfile PATH --corpus SMALL_INDEX_PATH before a multi-host production run."
 fi

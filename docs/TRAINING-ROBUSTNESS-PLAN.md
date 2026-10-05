@@ -252,9 +252,12 @@ Implemented: `testing/training-conformance.sh` compares the production shared
 PyTorch model with an independent functional oracle for logits, masked causal
 loss, every gradient, one AdamW update and optimizer state, save/reload logits,
 and next-token argmax in FP64 CPU and, when available, FP32 CUDA. It is a
-required first step of `testing/training-acceptance.sh`. BF16, real-worker
-memorization, and fixed-global-batch distributed equivalence remain blocking
-work in this phase.
+required first step of `testing/training-acceptance.sh`.
+`testing/e2e/model-pytorch-memorization.sh` adds the real-worker learning
+control through an ordinary generated compose: it requires at least a 90%
+held-out-loss reduction, a final best loss no greater than 0.25, exact learned
+continuation, and EOS termination. BF16 and fixed-global-batch distributed
+equivalence remain blocking work in this phase.
 
 ### Phase 2: reproduce known learning controls
 
@@ -406,6 +409,7 @@ home, so history is not rearranged while the plan is still being implemented.
 
 1. Add the independent logits/loss/gradient/AdamW conformance test.
 2. Add real-worker tiny memorization and save/reload/inference parity tests.
+   Implemented by the required training-acceptance gates.
 3. Add one/two/four-GPU fixed-global-batch equivalence and resume acceptance.
 4. Add log-likelihood evaluation with per-domain bits per byte.
 5. Add a public-checkpoint baseline runner for matched Pythia checkpoints.
