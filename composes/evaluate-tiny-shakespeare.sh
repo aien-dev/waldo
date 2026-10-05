@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Evaluate ladder rung 0001 with fixed Shakespeare prompts.
 set -euo pipefail
 
 if (($# < 2 || $# > 4)); then

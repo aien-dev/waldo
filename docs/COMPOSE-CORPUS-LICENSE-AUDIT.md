@@ -2,9 +2,9 @@
 
 Status: engineering review completed 2026-09-14. This is not legal advice.
 
-This audit covers every corpus selected by `composes/0000-canary.yaml` through
-`0004-conversation.yaml`. A source license, a dataset/database license, and a
-license or public-domain status for each contained work are separate facts.
+This audit covers corpora selected by active and preserved composes. A source
+license, a dataset/database license, and a license or public-domain status for
+each contained work are separate facts.
 WALDO implements `distribution_policy: distributable` as one simple,
 record-level rule: include a document when its effective license is on the
 reviewed distributable allowlist, and otherwise skip it. Package and source
@@ -35,6 +35,8 @@ the others.
 | `post-train/sft/dolly` | Databricks revision `bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a`; published JSONL | [Pinned publisher card](https://huggingface.co/datasets/databricks/databricks-dolly-15k/tree/bdd27f4d94b9c1f951818a7da7fd7aeea5dbff1a) expressly allows academic and commercial use under CC-BY-SA-3.0 and identifies Wikipedia-derived categories. | **Approved for distributable model training.** Attribute Databricks and Wikipedia contributors; preserve CC-BY-SA-3.0 and share-alike for redistributed corpus adaptations. |
 | `post-train/sft/aya` | Cohere For AI revision `f9ea04583f02a8f86404ff6c58bf75fe637df8a2`; `data/*.parquet` | [Pinned publisher card](https://huggingface.co/datasets/CohereForAI/aya_dataset/tree/f9ea04583f02a8f86404ff6c58bf75fe637df8a2) says the human-authored dataset may be used for any academic or commercial purpose under Apache-2.0. | **Approved for distributable model training.** Preserve Apache-2.0 license and notices for corpus redistribution. |
 | `core/synthetic/cosmopedia-v2` | Hugging Face SmolLM corpus revision `3ba9d605774198c5868892d7a8deda78031a781f`; all 104 Cosmopedia v2 Parquet shards | [Pinned publisher card](https://huggingface.co/datasets/HuggingFaceTB/smollm-corpus/tree/3ba9d605774198c5868892d7a8deda78031a781f) applies ODC-BY to the collection and says generated documents use web pages as seed samples. [ODC-BY](https://opendatacommons.org/licenses/by/1-0/) distinguishes database rights from rights in individual contents. | **Unresolved; legal review.** The collection-level ODC-BY assertion is retained as history; future remediation should use `LicenseRef-Cosmopedia-V2-Contents-Unresolved` until seed/content rights and generation terms are verified. |
+| `core/reference/tiny-shakespeare` | `karpathy/char-rnn` commit `6f9487a6fe5b420b7ca9afb0d7c078e37c1d1b4e`; exact `data/tinyshakespeare/input.txt`, SHA-256 `86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed` | The repository distributes the example under MIT; the underlying Shakespeare plays are public-domain works. | **Approved for training and corpus redistribution.** Preserve the repository's MIT notice with the selected example file. |
+| `core/synthetic/tinystories-reference` | TinyStories revision `f54c09fd23315a6f9c86f9dc80f725de7d8f9c64`; first of four auto-converted training Parquet shards | The [pinned publisher card](https://huggingface.co/datasets/roneneldan/TinyStories/tree/f54c09fd23315a6f9c86f9dc80f725de7d8f9c64) declares CDLA-Sharing-1.0 for the dataset and identifies GPT-3.5/GPT-4-generated stories. | **Approved for private/research training; model-distribution review required.** CDLA-Sharing governs the shared dataset, while applicable model-output terms and the classification of generated contents require review before representing derived model weights as distributable. |
 | `core/common-pile/stackexchange` | Common Pile revision `c0ac7373830c688a43fc12d1988c4b19ccd884ab`; filtered JSON gzip shards | [Publisher licensing timeline](https://stackoverflow.com/help/licensing) applies CC-BY-SA-2.5, 3.0, or 4.0 by contribution date; the [pinned Common Pile card](https://huggingface.co/datasets/common-pile/stackexchange_filtered/tree/c0ac7373830c688a43fc12d1988c4b19ccd884ab) says each record carries its license. | **Approved for training but not redistribution of the current WALDO shards.** Future ingestion starts with `LicenseRef-Stack-Exchange-Mixed-CC-BY-SA`, then records each row's `metadata.license`; retain author/post URLs before publishing corpus artifacts. |
 | `code/copyleft/linux-core` | 22 official Git repositories at the exact commits and raw-tree hashes recorded in its manifest | Each source has a pinned official COPYING/LICENSE URL; examples: [Linux](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/COPYING?id=038d61fd642278bab63ee8ef722c50d10ab01e8f) and [GCC](https://github.com/gcc-mirror/gcc/blob/5115c7e447fc07457443df874bf57840e8316d5f/COPYING3). | **Unresolved; legal review for model distribution.** Training is not prohibited by the recorded GPL/LGPL terms, and source/corpus redistribution is possible only while satisfying exact license, source, notice, and exception obligations. WALDO continues to fail closed for model-weight distribution. |
 | `code/permissive/linux-core` | 11 official Git repositories at exact commits and raw-tree hashes recorded in its manifest | Pinned official evidence is recorded per source; examples: [musl](https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT?id=0784374d561435f7c787a555aeab8ede699ed298), [OpenBSD policy](https://www.openbsd.org/policy.html), and [NetBSD redistribution](https://www.netbsd.org/about/redistribution.html). | **Approved for training but not redistribution of the current combined shards.** Per-file copyright/license notices and several non-uniform BSD/ISC-style terms must be preserved and audited before corpus publication; custom `LicenseRef-*` values remain fail-closed. |
@@ -99,6 +101,7 @@ an unresolved input or decide whether a model is a derivative work.
 9. Public mailing lists: obtain author/list terms or a legal basis for training
    and redistribution. Do not infer permission from archive availability.
 
-Until those items are closed, the four numbered reference composes intentionally
-omit `distribution_policy: distributable`; their resulting model artifacts are
-private/research artifacts and must not be represented as distributable.
+Until those items are closed, active numbered composes using unresolved inputs
+intentionally omit `distribution_policy: distributable`; their resulting model
+artifacts are private/research artifacts and must not be represented as
+distributable.

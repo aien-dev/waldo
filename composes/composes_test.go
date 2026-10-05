@@ -18,13 +18,18 @@ import (
 )
 
 var foundationFiles = []string{
-	"0001-foundation-pipeline-canary.yaml",
-	"0002-foundation-mixture-canary.yaml",
-	"0003-foundation-small-language.yaml",
-	"0003b-foundation-small-language-full.yaml",
-	"0004-foundation-small-general.yaml",
-	"0005-foundation-medium-pilot.yaml",
-	"0006-foundation-medium.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0001-foundation-pipeline-canary.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0002-foundation-mixture-canary.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0003-foundation-small-language.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0003b-foundation-small-language-full.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0004-foundation-small-general.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0005-foundation-medium-pilot.yaml",
+	"archive/2026-10-byte-bpe-ladder-retired/0006-foundation-medium.yaml",
+}
+
+var activeLadderFiles = []string{
+	"0001-tiny-shakespeare.yaml",
+	"0002-tinystories-byte.yaml",
 }
 
 var tinyStoriesFiles = []string{
@@ -97,8 +102,8 @@ func TestEveryReferenceComposeSettingResolvesIntoTrainingContract(t *testing.T) 
 	}
 }
 
-func TestFoundationLadderFilesAndForecasts(t *testing.T) {
-	files, err := filepath.Glob("*.yaml")
+func TestRetiredFoundationLadderFilesAndForecasts(t *testing.T) {
+	files, err := filepath.Glob("archive/2026-10-byte-bpe-ladder-retired/*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,6 +130,49 @@ func TestFoundationLadderFilesAndForecasts(t *testing.T) {
 		if forecast.ApproximateParameters != want[index].parameters || forecast.PlannedTokens != want[index].tokens {
 			t.Fatalf("%s forecast = %d parameters/%d tokens, want %+v", file, forecast.ApproximateParameters, forecast.PlannedTokens, want[index])
 		}
+	}
+}
+
+func TestActiveReferenceLadderForecastsAndControls(t *testing.T) {
+	files, err := filepath.Glob("*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(files, activeLadderFiles) {
+		t.Fatalf("active ladder composes = %v, want %v", files, activeLadderFiles)
+	}
+	wantTokens := []int64{81920000, 245760000}
+	var reference model.Compose
+	for index, file := range files {
+		compose := loadCompose(t, file)
+		forecast, err := model.ForecastCompose(compose)
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if forecast.ApproximateParameters != 10721280 || forecast.PlannedTokens != wantTokens[index] {
+			t.Fatalf("%s forecast = %d parameters/%d tokens", file, forecast.ApproximateParameters, forecast.PlannedTokens)
+		}
+		if index == 0 {
+			reference = compose
+			continue
+		}
+		if !reflect.DeepEqual(reference.Architecture, compose.Architecture) {
+			t.Fatalf("%s changes the rung 0001 architecture", file)
+		}
+	}
+	shakespeare := reference.Stages[0]
+	stories := loadCompose(t, activeLadderFiles[1]).Stages[0]
+	if !reflect.DeepEqual(corpusPaths(shakespeare.Corpora), []string{"core/reference/tiny-shakespeare"}) || !reflect.DeepEqual(corpusPaths(stories.Corpora), []string{"core/synthetic/tinystories-reference"}) {
+		t.Fatalf("active ladder corpora = %v / %v", corpusPaths(shakespeare.Corpora), corpusPaths(stories.Corpora))
+	}
+	for _, stage := range []model.Stage{shakespeare, stories} {
+		parameters := stage.Parameters
+		if parameters.Profile != "causal-pretrain-shuffled" || parameters.BatchSize != 64 || parameters.GradientAccumulation != 8 || parameters.SequenceLength != 256 || parameters.LearningRate != 0.001 || parameters.Optimizer != "adamw" || parameters.Schedule != "cosine" || parameters.Seed != 42 {
+			t.Fatalf("active ladder recipe changed = %+v", parameters)
+		}
+	}
+	if shakespeare.Parameters.EvaluationSelection != "contiguous-tail-v1" || stories.Parameters.EvaluationSelection != "lowest-sha256-v1" {
+		t.Fatalf("active ladder evaluation policies = %q / %q", shakespeare.Parameters.EvaluationSelection, stories.Parameters.EvaluationSelection)
 	}
 }
 
@@ -223,20 +271,21 @@ func TestSmallLanguageFullChangesOnlyTrainingHorizon(t *testing.T) {
 	}
 }
 
-func TestRootREADMESelectsActiveGeneralFoundationPlan(t *testing.T) {
+func TestRootREADMEDefinesActiveReferenceLadder(t *testing.T) {
 	content, err := os.ReadFile("README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(content)
 	for _, required := range []string{
-		"general-foundation",
-		"32.3M data ablation",
-		"125.6M",
-		"0/10 EOS",
-		"Corpus extraction",
-		"Post-training data",
-		"Do not continue directly",
+		"Reference-model training ladder",
+		"Rung 0001: Tiny Shakespeare reference — passed",
+		"b4f8477a55ad",
+		"step 1,250",
+		"under 15 minutes",
+		"Rung 0002: TinyStories byte control — ready",
+		"At least three samples emit EOS",
+		"Do not create or run rung 0003",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("README does not contain %q", required)

@@ -1,4 +1,4 @@
-# Tiny Shakespeare control: reproduce a compact character-level language-model workload.
+# Ladder rung 0002: change only the corpus from Tiny Shakespeare to TinyStories.
 kind: waldo-model-compose
 schema: 1
 architecture:
@@ -19,20 +19,15 @@ architecture:
     name: byte
     revision: builtin-byte-schema-1
 stages:
-  - name: tiny-shakespeare-pretrain
+  - name: tinystories-pretrain
     type: pre-training
     objective: causal-language-modeling
-    filter:
-      main_content: true
-      exclude:
-        repetitive_content: true
-        boilerplate_content: true
     corpora:
-      - core/reference/tiny-shakespeare
+      - core/synthetic/tinystories-reference
     parameters:
       profile: causal-pretrain-shuffled
       parallelism: auto
-      tokens: 81920000
+      tokens: 245760000
       batch_size: 64
       gradient_accumulation_steps: 8
       compute_precision: auto
@@ -47,9 +42,9 @@ stages:
       warmup_steps: 100
       checkpoint_every: 250
       evaluate_every: 250
-      shuffle_buffer_records: 1
-      shuffle_buffer_bytes: 2097152
-      evaluation_selection: contiguous-tail-v1
-      evaluation_fraction: 0.10
-      evaluation_max_records: 1
-      evaluation_max_bytes: 262144
+      shuffle_buffer_records: 32768
+      shuffle_buffer_bytes: 1073741824
+      evaluation_selection: lowest-sha256-v1
+      evaluation_fraction: 0.01
+      evaluation_max_records: 512
+      evaluation_max_bytes: 16777216

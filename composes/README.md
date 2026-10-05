@@ -1,88 +1,118 @@
-# Model training experiments
+# Reference-model training ladder
 
-All current training ladders are frozen. Do not start a larger foundation run
-from this directory. The repository-wide audit found that the project must
-first prove numerical conformance, reproduce independent learning controls,
-and establish quantitative evaluation. The authoritative sequence is the
-[training validation and capability plan](../docs/TRAINING-ROBUSTNESS-PLAN.md).
+This directory contains the active, gated path from a reproducible narrow
+language model toward broader capability. Every rung has one hypothesis, a
+pinned compose, fixed prompts, and explicit promotion criteria. A failed rung
+stops the ladder; it does not justify changing several variables at once.
 
-## Current conclusion
+Historical composes remain under [`archive`](archive). The `experiments`,
+`general-foundation`, and `tinystories` subdirectories preserve earlier
+diagnostics and are not active ladder rungs.
 
-WALDO's systems paths have completed successfully: multi-host data parallelism,
-weighted streaming, trained byte-BPE tokenizers, checkpoint selection, FP32
-publication, reload verification, and inference. These runs do not independently
-prove the model math or optimizer update, and the remaining problem cannot yet
-be attributed only to model size or corpus construction.
+## Rung 0001: Tiny Shakespeare reference — passed
 
-The experiments completed so far show:
+[`0001-tiny-shakespeare.yaml`](0001-tiny-shakespeare.yaml) is WALDO's first
+reference model. It uses the exact 1,115,394-byte Tiny Shakespeare text, the
+built-in byte tokenizer, a 10.7M-parameter decoder, and a deterministic 90/10
+contiguous split that does not introduce artificial line-level EOS tokens.
 
-- The old r50k models devoted too much small-model capacity to token I/O.
-- The 76.6M byte-BPE prose model improved loss through 1.5B tokens but retained
-  deterministic repetition, so a 20-tokens-per-parameter ratio was not a
-  capability guarantee.
-- Assistant-only post-training increased EOS from 0/10 to 7–8/10, proving that
-  stopping can be taught. Contract-heavy SFT introduced canned language, while
-  broader SFT still could not repair foundation correctness or repetition.
-- The Cosmopedia proxy improved from loss 4.9915 at 8.6M/10M tokens, to 2.6408
-  at 8.6M/500M, to 2.1102 at 32.3M/1B. Nevertheless, the final model produced
-  0/10 EOS in both greedy and temperature-0.7 suites, repeated, and frequently
-  abandoned prompts. Lower loss and greater capacity learned the corpus style
-  without producing stable semantics.
-- The 32.3M/1B general mixture accurately consumed its intended
-  55/25/15/5 shares and reached loss 2.9481, but only 2/15 deterministic probes
-  emitted EOS; the rest hit the token limit with severe factual errors,
-  repetition, and visible Stack Exchange and PLOS artifacts.
-- Twenty tokens per parameter is a compute-allocation heuristic, not a
-  capability guarantee. Public small general models are commonly trained far
-  beyond that point.
+Validated result on 2026-10-05:
 
-Accordingly, another mixture ablation or larger rung is not authorized. The
-next work is validation code and reference controls, not a new compose.
+- model `tiny-shakespeare-control-01`, ID `b4f8477a55ad`;
+- 5,000 optimizer steps and 81.92M consumed tokens;
+- held-out loss improved from 5.3814 to 1.5117;
+- step 1,250 was correctly selected and reloaded after terminal loss rose to
+  2.0940;
+- all eight temperature-0.8 samples preserved play formatting and produced
+  locally plausible Shakespeare-like text without immediate loop collapse;
+- greedy decoding exposed a repeat attractor around "season/state/seas"; and
+- training completed in under 15 minutes on two H200 GPUs.
 
-The first authorized reference control is
-[`tiny-shakespeare`](tiny-shakespeare/README.md). It uses one known corpus and
-a deterministic contiguous-tail evaluation split to test the complete WALDO
-training path without a data mixture.
+The full 81.92M-token compose is retained because it reproduces the learning
+curve, overtraining evidence, and selected checkpoint. Changing its horizon to
+20.48M would also change the cosine schedule and would not reproduce the same
+checkpoint.
 
-## Experiment directories
+Run and evaluate it with:
 
-- [`general-foundation`](general-foundation/README.md): frozen after the failed
-  32.3M data ablation; do not run its 125.6M composes.
-- [`tinystories`](tinystories/README.md): completed Cosmopedia proxy and its
-  failed coherence hypothesis.
-- [`experiments`](experiments/README.md): completed assistant-EOS post-training
-  diagnostics.
-- [`tiny-shakespeare`](tiny-shakespeare/README.md): active end-to-end reference
-  control.
-- [`archive`](archive): retired ladders and preserved failure evidence.
+```console
+go run ./cmd/waldo/ model forecast composes/0001-tiny-shakespeare.yaml
+go run ./cmd/waldo/ model train tiny-shakespeare-control-01 \
+  composes/0001-tiny-shakespeare.yaml
+./composes/evaluate-tiny-shakespeare.sh \
+  tiny-shakespeare-control-01 /tmp/tiny-shakespeare-control-01-eval.jsonl
+```
 
-The numbered YAML files still at this directory's root are the previous
-byte-BPE foundation ladder. They remain reproducible historical inputs but are
-not the active plan. Do not continue directly to
-`0005-foundation-medium-pilot.yaml` or `0006-foundation-medium.yaml`.
+This rung proves that WALDO's ingestion, byte tokenization, packing, optimizer,
+held-out evaluation, checkpoint selection, reload, and raw generation paths can
+learn a real language distribution. EOS is not a gate because this corpus is
+one continuous document.
 
-## Rules shared by every future experiment
+## Rung 0002: TinyStories byte control — ready
 
-1. Register one falsifiable hypothesis and one changed variable before a run.
-2. Preserve compose, summary, run ID, telemetry, consumption, and evaluations.
-3. Compare against an independent or public baseline with the same metric.
-4. Use quantitative gates and declared uncertainty; samples are diagnostic.
-5. Falling held-out loss is necessary but never sufficient.
-6. Failed gates stop dependent runs.
-7. Do not use post-training to conceal foundation incoherence or repetition.
-8. Do not silently change, relabel, or overwrite an indexed corpus or compose.
+[`0002-tinystories-byte.yaml`](0002-tinystories-byte.yaml) asks whether the
+same proven 10.7M model can move from one play-like stream to many short,
+simple stories. It keeps the architecture, tokenizer, context, batch,
+optimizer, learning rate, dropout, initialization, and seed from rung 0001.
+The intentional changes are the corpus, record-level evaluation, shuffle
+capacity, and the longer 15,000-step horizon needed to encounter diverse
+stories.
 
-## Corpus and post-training policy
+The corpus is the first pinned training Parquet shard from the original
+TinyStories release. This bounded quarter-corpus makes the rung practical on a
+Mac while retaining hundreds of thousands of complete story records. It is a
+WALDO-shaped learning control, not yet an exact reproduction of the paper's
+alternating GPT-Neo attention or pruned tokenizer. The paper and published
+prompts are available from the
+[TinyStories project](https://huggingface.co/datasets/roneneldan/TinyStories)
+and [paper](https://arxiv.org/abs/2305.07759).
 
-Corpus extraction may normalize structure, remove versioned extraction
-artifacts, annotate quality, deduplicate, and publish immutable derived views.
-It must not silently paraphrase or fact-edit canonical source records. Generated
-text is a separate synthetic corpus with complete provenance.
+Hypothesis: changing only to a constrained simple-English story distribution
+will preserve grammatical generation while improving entity, causal, and
+short-plot consistency beyond the Shakespeare style control.
 
-Post-training data should teach interaction, response shape, and EOS after the
-foundation passes. It should combine high-quality factual and procedural
-responses with a small format-contract component; the prior experiments show
-that format examples alone create a stopped but canned model.
+Promotion gates:
 
-The detailed diagnosis, implementation sequence, gates, and research basis are
-in the [training validation and capability plan](../docs/TRAINING-ROBUSTNESS-PLAN.md).
+1. Training completes without non-finite loss, and the selected checkpoint's
+   reloaded held-out loss agrees with its persisted evaluation.
+2. Best held-out loss improves by at least 50% from the initial evaluation.
+3. At least six of eight temperature-0.8 samples remain grammatical and retain
+   the prompt's people, objects, and causal setup for at least 150 generated
+   byte tokens.
+4. No more than two samples collapse into an immediate repeated sentence or
+   phrase loop.
+5. At least three samples emit EOS within 256 generated tokens. Unlike rung
+   0001, every TinyStories record teaches a real document boundary.
+6. Greedy output is recorded as a degeneration diagnostic, but it is not the
+   sole promotion decision.
+
+Run it only after `core/synthetic/tinystories-reference` has been ingested:
+
+```console
+cd ../fetchers
+go run ./cmd/fetcher corpora/tinystories-reference.ini \
+  /tmp/tinystories-reference
+cd ../waldo
+go run ./cmd/waldo/ index ingest /tmp/tinystories-reference \
+  core/synthetic/tinystories-reference
+
+go run ./cmd/waldo/ model forecast composes/0002-tinystories-byte.yaml
+go run ./cmd/waldo/ model train tinystories-byte-01 \
+  composes/0002-tinystories-byte.yaml
+./composes/evaluate-tinystories.sh \
+  tinystories-byte-01 /tmp/tinystories-byte-01-eval.jsonl
+./composes/evaluate-tinystories.sh \
+  tinystories-byte-01 /tmp/tinystories-byte-01-greedy.jsonl 0 42
+```
+
+## Later rungs
+
+Do not create or run rung 0003 until rung 0002 passes. The likely next isolated
+variables are a compact byte-BPE tokenizer and a 512-token context, followed by
+model scaling. General-corpus mixtures come only after these narrow reference
+controls establish stable grammar, consistency, EOS, repetition, and held-out
+behavior.
+
+Every result must retain the compose, model summary, run ID, telemetry,
+consumption report, temperature samples, greedy samples, and a written gate
+decision.

@@ -1,4 +1,4 @@
-# Gate 4: diagnostic general-corpus run at ~76M and ~20 tokens/parameter.
+# Archived Gate 3: test language acquisition at ~76M without the PLOS domain stream.
 kind: waldo-model-compose
 schema: 1
 architecture:
@@ -42,15 +42,13 @@ stages:
         boilerplate_content: true
     corpora:
       - path: core/common-pile/wikimedia
-        weight: 5
+        weight: 1
       - path: core/common-pile/pressbooks
-        weight: 2
-      - path: science/plos
         weight: 1
     parameters:
       profile: causal-pretrain-weighted
       parallelism: auto
-      tokens: 1500000000
+      tokens: 760000000
       batch_size: 64
       gradient_accumulation_steps: 4
       compute_precision: bfloat16
@@ -62,11 +60,11 @@ stages:
       schedule: warmup-stable-warmdown
       seed: 42
       weight_decay: 0.1
-      warmup_steps: 1144
-      warmdown_steps: 4578
+      warmup_steps: 580
+      warmdown_steps: 2319
       shuffle_buffer_records: 32768
       shuffle_buffer_bytes: 1073741824
-      checkpoint_every: 1000
-      evaluate_every: 1000
+      checkpoint_every: 500
+      evaluate_every: 500
       evaluation_max_records: 512
       evaluation_max_bytes: 16777216
