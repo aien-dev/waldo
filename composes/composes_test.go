@@ -30,6 +30,7 @@ var foundationFiles = []string{
 var activeLadderFiles = []string{
 	"0001-tiny-shakespeare.yaml",
 	"0002-tinystories-byte.yaml",
+	"0003-tinystories-context-512.yaml",
 }
 
 var tinyStoriesFiles = []string{
@@ -141,7 +142,7 @@ func TestActiveReferenceLadderForecastsAndControls(t *testing.T) {
 	if !reflect.DeepEqual(files, activeLadderFiles) {
 		t.Fatalf("active ladder composes = %v, want %v", files, activeLadderFiles)
 	}
-	wantTokens := []int64{81920000, 245760000}
+	wantTokens := []int64{81920000, 245760000, 245760000}
 	var reference model.Compose
 	for index, file := range files {
 		compose := loadCompose(t, file)
@@ -156,14 +157,19 @@ func TestActiveReferenceLadderForecastsAndControls(t *testing.T) {
 			reference = compose
 			continue
 		}
-		if !reflect.DeepEqual(reference.Architecture, compose.Architecture) {
-			t.Fatalf("%s changes the rung 0001 architecture", file)
+		wantArchitecture := reference.Architecture
+		if index == 2 {
+			wantArchitecture.ContextTokens = 512
+		}
+		if !reflect.DeepEqual(wantArchitecture, compose.Architecture) {
+			t.Fatalf("%s changes more than the intended context control", file)
 		}
 	}
 	shakespeare := reference.Stages[0]
 	stories := loadCompose(t, activeLadderFiles[1]).Stages[0]
-	if !reflect.DeepEqual(corpusPaths(shakespeare.Corpora), []string{"core/reference/tiny-shakespeare"}) || !reflect.DeepEqual(corpusPaths(stories.Corpora), []string{"core/synthetic/tinystories-reference"}) {
-		t.Fatalf("active ladder corpora = %v / %v", corpusPaths(shakespeare.Corpora), corpusPaths(stories.Corpora))
+	storiesContext512 := loadCompose(t, activeLadderFiles[2]).Stages[0]
+	if !reflect.DeepEqual(corpusPaths(shakespeare.Corpora), []string{"core/reference/tiny-shakespeare"}) || !reflect.DeepEqual(corpusPaths(stories.Corpora), []string{"core/synthetic/tinystories-reference"}) || !reflect.DeepEqual(corpusPaths(storiesContext512.Corpora), []string{"core/synthetic/tinystories-reference"}) {
+		t.Fatalf("active ladder corpora = %v / %v / %v", corpusPaths(shakespeare.Corpora), corpusPaths(stories.Corpora), corpusPaths(storiesContext512.Corpora))
 	}
 	for _, stage := range []model.Stage{shakespeare, stories} {
 		parameters := stage.Parameters
@@ -171,8 +177,21 @@ func TestActiveReferenceLadderForecastsAndControls(t *testing.T) {
 			t.Fatalf("active ladder recipe changed = %+v", parameters)
 		}
 	}
-	if shakespeare.Parameters.EvaluationSelection != "contiguous-tail-v1" || stories.Parameters.EvaluationSelection != "lowest-sha256-v1" {
-		t.Fatalf("active ladder evaluation policies = %q / %q", shakespeare.Parameters.EvaluationSelection, stories.Parameters.EvaluationSelection)
+	contextParameters := storiesContext512.Parameters
+	wantContextParameters := stories.Parameters
+	wantContextParameters.BatchSize = 32
+	wantContextParameters.SequenceLength = 512
+	if !reflect.DeepEqual(contextParameters, wantContextParameters) {
+		t.Fatalf("context rung recipe changed beyond sequence/batch control: got=%+v want=%+v", contextParameters, wantContextParameters)
+	}
+	if stories.Parameters.BatchSize*stories.Parameters.SequenceLength != contextParameters.BatchSize*contextParameters.SequenceLength {
+		t.Fatalf("context rung tokens/update = %d, want %d", contextParameters.BatchSize*contextParameters.SequenceLength, stories.Parameters.BatchSize*stories.Parameters.SequenceLength)
+	}
+	if stories.Parameters.Tokens != contextParameters.Tokens {
+		t.Fatalf("context rung tokens = %d, want %d", contextParameters.Tokens, stories.Parameters.Tokens)
+	}
+	if shakespeare.Parameters.EvaluationSelection != "contiguous-tail-v1" || stories.Parameters.EvaluationSelection != "lowest-sha256-v1" || storiesContext512.Parameters.EvaluationSelection != "lowest-sha256-v1" {
+		t.Fatalf("active ladder evaluation policies = %q / %q / %q", shakespeare.Parameters.EvaluationSelection, stories.Parameters.EvaluationSelection, storiesContext512.Parameters.EvaluationSelection)
 	}
 }
 
@@ -283,9 +302,10 @@ func TestRootREADMEDefinesActiveReferenceLadder(t *testing.T) {
 		"b4f8477a55ad",
 		"step 1,250",
 		"under 15 minutes",
-		"Rung 0002: TinyStories byte control — ready",
+		"Rung 0002: TinyStories byte control — diagnostic complete",
 		"At least three samples emit EOS",
-		"Do not create or run rung 0003",
+		"Rung 0003: TinyStories 512-byte context — ready",
+		"Do not create rung 0004",
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("README does not contain %q", required)
