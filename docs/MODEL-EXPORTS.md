@@ -293,6 +293,7 @@ small-huggingface/
 ├── model.safetensors
 ├── special_tokens_map.json
 ├── tokenization_openwaldo.py
+├── tokenizer.json
 └── tokenizer_config.json
 ```
 
@@ -303,6 +304,12 @@ standard Llama causal-language-model architecture. The schema-1 WALDO byte
 tokenizer is explicit custom code, so Transformers consumers must allow its
 reviewed package-local tokenizer implementation with
 `trust_remote_code=True`.
+
+The package also includes a standard Hugging Face `tokenizer.json` that
+describes the same byte tokenizer: `<pad>`=0, `<bos>`=1, `<eos>`=2, and byte
+`b` is id `b+3` spelled `<0xHH>`, with no merges and no implicit BOS or EOS.
+Consumers can load it with the `tokenizers` library without custom code. The
+custom tokenizer files stay for compatibility.
 
 The package includes `architecture.py` even though the model maps to the
 standard Transformers Llama implementation. This makes the architecture

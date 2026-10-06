@@ -136,6 +136,11 @@ func exportLlamaPackage(ctx context.Context, inspection model.Inspection, destin
 		"architecture.py":           []byte(architectureSource),
 		"README.md":                 []byte(readme),
 	}
+	tokenizerJSON, err := huggingFaceTokenizerJSON()
+	if err != nil {
+		return "", err
+	}
+	files["tokenizer.json"] = tokenizerJSON
 	tokenizerConfiguration, interactionTemplate, err := huggingFaceTokenizerConfiguration(record)
 	if err != nil {
 		return "", err
@@ -160,16 +165,7 @@ func exportLlamaPackage(ctx context.Context, inspection model.Inspection, destin
 	if err != nil {
 		return "", err
 	}
-	roles := map[string]string{
-		"model.safetensors": "weights", "config.json": "configuration",
-		"generation_config.json": "generation-configuration",
-		"tokenizer_config.json":  "tokenizer", "special_tokens_map.json": "tokenizer",
-		"tokenization_openwaldo.py": "tokenizer-code", "architecture.py": "architecture-code",
-		"README.md": "documentation", "EU-BOM.json": "regulatory-disclosure",
-	}
-	if interactionTemplate != "" {
-		roles["chat_template.jinja"] = "interaction-template"
-	}
+	roles := huggingFaceArtifactRoles(interactionTemplate)
 	inventory, err := inventoryFiles(temporary, roles)
 	if err != nil {
 		return "", err
