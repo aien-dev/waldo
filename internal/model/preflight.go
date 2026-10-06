@@ -218,7 +218,11 @@ func forecastPlanForCompose(compose Compose) (Plan, error) {
 		return Plan{}, err
 	}
 	for _, stage := range compose.Stages {
-		resolved, err := stage.ResolvePlanningParameters()
+		parameters, err := stage.trainingParameters()
+		if err != nil {
+			return Plan{}, fmt.Errorf("stage %s training parameters: %w", stage.Name, err)
+		}
+		resolved, err := training.ResolvePlanningParameters(parameters)
 		if err != nil {
 			return Plan{}, fmt.Errorf("stage %s training parameters: %w", stage.Name, err)
 		}
@@ -226,7 +230,7 @@ func forecastPlanForCompose(compose Compose) (Plan, error) {
 		if stage.Parameters.Steps == 0 && stage.Parameters.Tokens == 0 {
 			plannedTokens = 0
 		}
-		plan.Stages = append(plan.Stages, PlannedStage{Name: stage.Name, Type: stage.Type, Objective: stage.Objective, Parameters: stage.Parameters, PlannedTokens: plannedTokens})
+		plan.Stages = append(plan.Stages, PlannedStage{Name: stage.Name, Type: stage.Type, Objective: stage.Objective, Parameters: parameters, PlannedTokens: plannedTokens})
 	}
 	return plan, nil
 }
