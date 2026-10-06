@@ -142,8 +142,9 @@ matrix work as:
 L(4H² + 4HG + 6HI + 4HS) + 2HV
 ```
 
-where `S` is sequence length/context and multiply-add is two FLOPs. Training is
-approximated as three times forward work. This includes GQA projection savings,
+where `S` is each stage's declared sequence length (not merely the architecture
+maximum) and multiply-add is two FLOPs. Training is approximated as three times
+forward work. This includes GQA projection savings,
 SwiGLU's three matrices, causal attention score/value work, and the vocabulary
 projection. Tying eliminates a second parameter matrix but does not eliminate
 the vocabulary projection computation. Embedding lookup is excluded.

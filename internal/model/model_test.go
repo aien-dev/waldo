@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -503,6 +504,11 @@ func TestInitializeAndTrainKeepStableModelIdentity(t *testing.T) {
 	}
 	if trained.RunBOMs[0].EvaluationSet == nil || trained.RunBOMs[0].EvaluationSet.Records != 1 || len(trained.Runs[0].Observation.Evaluations) != 1 || trained.Runs[0].Observation.Evaluations[0].Metrics["heldout_loss"] <= 0 {
 		t.Fatalf("held-out evidence = %+v / %+v", trained.RunBOMs[0].EvaluationSet, trained.Runs[0].Observation.Evaluations)
+	}
+	metrics := trained.Runs[0].Observation.Evaluations[0].Metrics
+	wantBPB := metrics["heldout_nll_sum"] / (math.Ln2 * metrics["heldout_utf8_bytes"])
+	if metrics["heldout_target_tokens"] != float64(trained.RunBOMs[0].EvaluationSet.TokenTargets) || metrics["heldout_utf8_bytes"] != float64(trained.RunBOMs[0].EvaluationSet.TextBytes) || math.Abs(metrics["heldout_bits_per_byte"]-wantBPB) > 1e-12 {
+		t.Fatalf("exact held-out metrics = %+v, set = %+v", metrics, trained.RunBOMs[0].EvaluationSet)
 	}
 	telemetryPath := filepath.Join(trained.Path, "runs", "0001-pretrain-run0001", TelemetryFilename)
 	telemetryFile, err := os.Open(telemetryPath)

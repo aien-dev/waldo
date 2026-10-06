@@ -97,12 +97,10 @@ func TestByteContextAndInitialLossSanity(t *testing.T) {
 
 func TestArchitectureAwareComputeIncludesContextAndVocabulary(t *testing.T) {
 	architecture := Architecture{ContextTokens: 256, VocabularySize: 259, HiddenSize: 384, IntermediateSize: 1024, Layers: 6, AttentionHeads: 6, KeyValueHeads: 6}
-	baseline := architectureTrainingFLOPsPerToken(architecture)
-	architecture.ContextTokens = 512
-	longer := architectureTrainingFLOPsPerToken(architecture)
-	architecture.ContextTokens = 256
+	baseline := architectureTrainingFLOPsPerToken(architecture, 256)
+	longer := architectureTrainingFLOPsPerToken(architecture, 512)
 	architecture.VocabularySize = 16_000
-	largerVocabulary := architectureTrainingFLOPsPerToken(architecture)
+	largerVocabulary := architectureTrainingFLOPsPerToken(architecture, 256)
 	if longer <= baseline || largerVocabulary <= baseline {
 		t.Fatalf("architecture-aware FLOPs baseline=%f longer=%f vocabulary=%f", baseline, longer, largerVocabulary)
 	}
