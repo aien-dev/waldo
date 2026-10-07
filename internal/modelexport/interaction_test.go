@@ -117,3 +117,12 @@ func TestExportInteractionPreservesLegacyCompletedToolRun(t *testing.T) {
 		t.Fatalf("incomplete legacy run unexpectedly enabled tools: %+v", interaction)
 	}
 }
+
+// The plain ChatML template text is pinned byte for byte: consumers such as the AIEN loader
+// recognise the standard template by its text, so a respelling must be a deliberate change.
+func TestChatMLJinjaWithoutToolsIsPinned(t *testing.T) {
+	const want = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+	if chatMLJinjaWithoutTools != want {
+		t.Fatalf("chatMLJinjaWithoutTools changed:\n got %q\nwant %q", chatMLJinjaWithoutTools, want)
+	}
+}

@@ -62,10 +62,13 @@ const chatMLJinja = `{%- set start = 0 %}
 {%- endfor %}
 {%- if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{%- endif %}`
 
-const chatMLJinjaWithoutTools = `{%- for message in messages %}
-{{- '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>\n' }}
-{%- endfor %}
-{%- if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{%- endif %}`
+// chatMLJinjaWithoutTools is the plain ChatML layout in the exact text Hugging Face model repos
+// ship for it (SmolLM2-Instruct and others without a default system message). Its newlines are
+// real newline characters inside the Jinja string literals, as in those repos. It renders the same
+// bytes as the previous whitespace-controlled spelling of this template; the text is fixed so that
+// consumers that recognise the standard template by its text (for example the AIEN loader) accept
+// the export.
+const chatMLJinjaWithoutTools = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
 func jinjaInteractionTemplate(interaction model.Interaction) (string, error) {
 	if err := interaction.Validate(); err != nil {
